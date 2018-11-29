@@ -14,6 +14,10 @@ namespace NPpmd {
 
 static const UInt32 kBufSize = (1 << 20);
 
+static void *SzBigAlloc(void *, size_t size) { return BigAlloc(size); }
+static void SzBigFree(void *, void *address) { BigFree(address); }
+static ISzAlloc g_BigAlloc = { SzBigAlloc, SzBigFree };
+
 static const Byte kOrders[10] = { 3, 4, 4, 5, 5, 6, 8, 16, 24, 32 };
 
 void CEncProps::Normalize(int level)
@@ -36,7 +40,7 @@ void CEncProps::Normalize(int level)
       }
     }
   }
-  if (Order == -1) Order = kOrders[(unsigned)level];
+  if (Order == -1) Order = kOrders[level];
 }
 
 CEncoder::CEncoder():

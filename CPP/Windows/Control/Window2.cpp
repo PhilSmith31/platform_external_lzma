@@ -178,7 +178,7 @@ bool CWindow2::OnCommand(int /* code */, int /* itemID */, LPARAM /* lParam */, 
 /*
 bool CDialog::OnButtonClicked(int buttonID, HWND buttonHWND)
 {
-  switch (buttonID)
+  switch(aButtonID)
   {
     case IDOK:
       OnOK();

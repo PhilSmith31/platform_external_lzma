@@ -1,5 +1,5 @@
 /* 7z.h -- 7z interface
-2015-11-18 : Igor Pavlov : Public domain */
+2013-01-18 : Igor Pavlov : Public domain */
 
 #ifndef __7Z_H
 #define __7Z_H
@@ -11,7 +11,7 @@ EXTERN_C_BEGIN
 #define k7zStartHeaderSize 0x20
 #define k7zSignatureSize 6
 
-extern const Byte k7zSignature[k7zSignatureSize];
+extern Byte k7zSignature[k7zSignatureSize];
 
 typedef struct
 {
@@ -25,7 +25,8 @@ typedef struct
 {
   size_t PropsOffset;
   UInt32 MethodID;
-  Byte NumStreams;
+  Byte NumInStreams;
+  Byte NumOutStreams;
   Byte PropsSize;
 } CSzCoderInfo;
 
@@ -33,25 +34,37 @@ typedef struct
 {
   UInt32 InIndex;
   UInt32 OutIndex;
-} CSzBond;
+} CSzBindPair;
 
 #define SZ_NUM_CODERS_IN_FOLDER_MAX 4
-#define SZ_NUM_BONDS_IN_FOLDER_MAX 3
+#define SZ_NUM_BINDS_IN_FOLDER_MAX 3
 #define SZ_NUM_PACK_STREAMS_IN_FOLDER_MAX 4
+#define SZ_NUM_CODERS_OUT_STREAMS_IN_FOLDER_MAX 4
 
 typedef struct
 {
   UInt32 NumCoders;
-  UInt32 NumBonds;
+  UInt32 NumBindPairs;
   UInt32 NumPackStreams;
-  UInt32 UnpackStream;
+  UInt32 MainOutStream;
   UInt32 PackStreams[SZ_NUM_PACK_STREAMS_IN_FOLDER_MAX];
-  CSzBond Bonds[SZ_NUM_BONDS_IN_FOLDER_MAX];
+  CSzBindPair BindPairs[SZ_NUM_BINDS_IN_FOLDER_MAX];
   CSzCoderInfo Coders[SZ_NUM_CODERS_IN_FOLDER_MAX];
+  UInt64 CodersUnpackSizes[SZ_NUM_CODERS_OUT_STREAMS_IN_FOLDER_MAX];
 } CSzFolder;
 
+/*
+typedef struct
+{
+  size_t CodersDataOffset;
+  size_t UnpackSizeDataOffset;
+  // UInt32 StartCoderUnpackSizesIndex;
+  UInt32 StartPackStreamIndex;
+  // UInt32 IndexOfMainOutStream;
+} CSzFolder2;
+*/
 
-SRes SzGetNextFolderItem(CSzFolder *f, CSzData *sd);
+SRes SzGetNextFolderItem(CSzFolder *f, CSzData *sd, CSzData *sdSizes);
 
 typedef struct
 {
@@ -81,24 +94,46 @@ typedef struct
   UInt32 NumPackStreams;
   UInt32 NumFolders;
 
-  UInt64 *PackPositions;          // NumPackStreams + 1
-  CSzBitUi32s FolderCRCs;         // NumFolders
+  UInt64 *PackPositions; // NumPackStreams + 1
+  CSzBitUi32s FolderCRCs;
 
-  size_t *FoCodersOffsets;        // NumFolders + 1
-  UInt32 *FoStartPackStreamIndex; // NumFolders + 1
-  UInt32 *FoToCoderUnpackSizes;   // NumFolders + 1
-  Byte *FoToMainUnpackSizeIndex;  // NumFolders
-  UInt64 *CoderUnpackSizes;       // for all coders in all folders
+  size_t *FoCodersOffsets;
+  size_t *FoSizesOffsets;
+  // UInt32 StartCoderUnpackSizesIndex;
+  UInt32 *FoStartPackStreamIndex;
 
+  // CSzFolder2 *Folders;  // +1 item for sum values
   Byte *CodersData;
+  Byte *UnpackSizesData;
+  size_t UnpackSizesDataSize;
+  // UInt64 *CoderUnpackSizes;
 } CSzAr;
 
-UInt64 SzAr_GetFolderUnpackSize(const CSzAr *p, UInt32 folderIndex);
 
 SRes SzAr_DecodeFolder(const CSzAr *p, UInt32 folderIndex,
     ILookInStream *stream, UInt64 startPos,
     Byte *outBuffer, size_t outSize,
     ISzAlloc *allocMain);
+
+/*
+  SzExtract extracts file from archive
+
+  *outBuffer must be 0 before first call for each new archive.
+
+  Extracting cache:
+    If you need to decompress more than one file, you can send
+    these values from previous call:
+      *blockIndex,
+      *outBuffer,
+      *outBufferSize
+    You can consider "*outBuffer" as cache of solid block. If your archive is solid,
+    it will increase decompression speed.
+  
+    If you use external function, you can declare these 3 cache variables
+    (blockIndex, outBuffer, outBufferSize) as static in that external function.
+    
+    Free *outBuffer and set *outBuffer to 0, if you want to flush cache.
+*/
 
 typedef struct
 {
@@ -109,7 +144,7 @@ typedef struct
   
   UInt32 NumFiles;
 
-  UInt64 *UnpackPositions;  // NumFiles + 1
+  UInt64 *UnpackPositions;
   // Byte *IsEmptyFiles;
   Byte *IsDirs;
   CSzBitUi32s CRCs;
@@ -119,8 +154,9 @@ typedef struct
   CSzBitUi64s MTime;
   CSzBitUi64s CTime;
 
-  UInt32 *FolderToFile;   // NumFolders + 1
-  UInt32 *FileToFolder;   // NumFiles
+  // UInt32 *FolderStartPackStreamIndex;
+  UInt32 *FolderStartFileIndex; // + 1
+  UInt32 *FileIndexToFolderIndexMap;
 
   size_t *FileNameOffsets; /* in 2-byte steps */
   Byte *FileNames;  /* UTF-16-LE */
@@ -146,28 +182,6 @@ size_t SzArEx_GetFileNameUtf16(const CSzArEx *p, size_t fileIndex, UInt16 *dest)
 /*
 size_t SzArEx_GetFullNameLen(const CSzArEx *p, size_t fileIndex);
 UInt16 *SzArEx_GetFullNameUtf16_Back(const CSzArEx *p, size_t fileIndex, UInt16 *dest);
-*/
-
-
-
-/*
-  SzArEx_Extract extracts file from archive
-
-  *outBuffer must be 0 before first call for each new archive.
-
-  Extracting cache:
-    If you need to decompress more than one file, you can send
-    these values from previous call:
-      *blockIndex,
-      *outBuffer,
-      *outBufferSize
-    You can consider "*outBuffer" as cache of solid block. If your archive is solid,
-    it will increase decompression speed.
-  
-    If you use external function, you can declare these 3 cache variables
-    (blockIndex, outBuffer, outBufferSize) as static in that external function.
-    
-    Free *outBuffer and set *outBuffer to 0, if you want to flush cache.
 */
 
 SRes SzArEx_Extract(

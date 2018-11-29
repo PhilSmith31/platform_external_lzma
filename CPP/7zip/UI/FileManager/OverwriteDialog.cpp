@@ -50,7 +50,7 @@ void COverwriteDialog::SetFileInfoControl(int textID, int iconID,
     sizeString = MyFormatNew(IDS_FILE_SIZE, NumberToString(fileInfo.Size));
 
   const UString &fileName = fileInfo.Name;
-  int slashPos = fileName.ReverseFind_PathSepar();
+  int slashPos = fileName.ReverseFind(WCHAR_PATH_SEPARATOR);
   UString s1 = fileName.Left(slashPos + 1);
   UString s2 = fileName.Ptr(slashPos + 1);
 
@@ -58,18 +58,18 @@ void COverwriteDialog::SetFileInfoControl(int textID, int iconID,
   ReduceString(s2);
   
   UString s = s1;
-  s.Add_LF();
+  s += L'\n';
   s += s2;
-  s.Add_LF();
+  s += L'\n';
   s += sizeString;
-  s.Add_LF();
+  s += L'\n';
 
   if (fileInfo.TimeIsDefined)
   {
     FILETIME localFileTime;
     if (!FileTimeToLocalFileTime(&fileInfo.Time, &localFileTime))
       throw 4190402;
-    AddLangString(s, IDS_PROP_MTIME);
+    s += LangString(IDS_PROP_MTIME);
     s += L": ";
     wchar_t t[32];
     ConvertFileTimeToString(localFileTime, t);

@@ -40,20 +40,20 @@ static const wchar_t *kIncorrectOutDir = L"Incorrect output directory path";
 
 static void AddValuePair(UString &s, UINT resourceID, UInt64 value, bool addColon = true)
 {
-  AddLangString(s, resourceID);
+  wchar_t sz[32];
+  s += LangString(resourceID);
   if (addColon)
     s += L':';
-  s.Add_Space();
-  char sz[32];
+  s += L' ';
   ConvertUInt64ToString(value, sz);
-  s.AddAscii(sz);
-  s.Add_LF();
+  s += sz;
+  s += L'\n';
 }
 
 static void AddSizePair(UString &s, UINT resourceID, UInt64 value)
 {
   wchar_t sz[32];
-  AddLangString(s, resourceID);
+  s += LangString(resourceID);
   s += L": ";
   ConvertUInt64ToString(value, sz);
   s += MyFormatNew(IDS_FILE_SIZE, sz);
@@ -65,7 +65,7 @@ static void AddSizePair(UString &s, UINT resourceID, UInt64 value)
     s += sz;
     s += L" MB)";
   }
-  s.Add_LF();
+  s += L'\n';
 }
 
 #endif
@@ -122,7 +122,7 @@ HRESULT CThreadExtracting::ProcessVirt()
       AddSizePair(s, IDS_PROP_SIZE, Stat.UnpackSize);
       if (Stat.NumAltStreams != 0)
       {
-        s.Add_LF();
+        s += L'\n';
         AddValuePair(s, IDS_PROP_NUM_ALT_STREAMS, Stat.NumAltStreams);
         AddSizePair(s, IDS_PROP_ALT_STREAMS_SIZE, Stat.AltStreams_UnpackSize);
       }
@@ -130,12 +130,12 @@ HRESULT CThreadExtracting::ProcessVirt()
     
     if (HashBundle)
     {
-      s.Add_LF();
+      s += L'\n';
       AddHashBundleRes(s, *HashBundle, UString());
     }
     
-    s.Add_LF();
-    AddLangString(s, IDS_MESSAGE_NO_ERRORS);
+    s += L'\n';
+    s += LangString(IDS_MESSAGE_NO_ERRORS);
     
     FinalMessage.OkMessage.Title = Title;
     FinalMessage.OkMessage.Message = s;
@@ -229,7 +229,7 @@ HRESULT ExtractGUI(
     NName::NormalizeDirPathPrefix(options.OutputDir);
     
     /*
-    if (!CreateComplexDirectory(options.OutputDir))
+    if(!CreateComplexDirectory(options.OutputDir))
     {
       UString s = GetUnicodeString(NError::MyFormatMessage(GetLastError()));
       UString s2 = MyFormatNew(IDS_CANNOT_CREATE_FOLDER,
@@ -237,9 +237,7 @@ HRESULT ExtractGUI(
       0x02000603,
       #endif
       options.OutputDir);
-      s2.Add_LF();
-      s2 += s;
-      MyMessageBox(s2);
+      MyMessageBox(s2 + UString(L'\n') + s);
       return E_FAIL;
     }
     */

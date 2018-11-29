@@ -12,6 +12,15 @@ int CompareFileNames(const wchar_t *s1, const wchar_t *s2) STRING_UNICODE_THROW;
 
 bool IsPath1PrefixedByPath2(const wchar_t *s1, const wchar_t *s2);
 
+inline bool IsCharDirLimiter(wchar_t c)
+{
+  return c == WCHAR_PATH_SEPARATOR
+    #ifdef _WIN32
+      || c == L'/'
+    #endif
+    ;
+}
+
 void SplitPathToParts(const UString &path, UStringVector &pathParts);
 void SplitPathToParts_2(const UString &path, UString &dirPrefix, UString &name);
 void SplitPathToParts_Smart(const UString &path, UString &dirPrefix, UString &name); // ignores dir delimiter at the end of (path)
@@ -27,8 +36,8 @@ namespace NWildcard {
 #ifdef _WIN32
 // returns true, if name is like "a:", "c:", ...
 bool IsDriveColonName(const wchar_t *s);
-unsigned GetNumPrefixParts_if_DrivePath(UStringVector &pathParts);
 #endif
+
 
 struct CItem
 {
@@ -57,13 +66,12 @@ class CCensorNode
   
   bool CheckPathCurrent(bool include, const UStringVector &pathParts, bool isFile) const;
   void AddItemSimple(bool include, CItem &item);
-public:
   bool CheckPathVect(const UStringVector &pathParts, bool isFile, bool &include) const;
-
+public:
   CCensorNode(): Parent(0) { };
   CCensorNode(const UString &name, CCensorNode *parent): Name(name), Parent(parent) { };
 
-  UString Name; // WIN32 doesn't support wildcards in file names
+  UString Name; // wildcard is not allowed here
   CObjectVector<CCensorNode> SubNodes;
   CObjectVector<CItem> IncludeItems;
   CObjectVector<CItem> ExcludeItems;
@@ -72,15 +80,15 @@ public:
 
   int FindSubNode(const UString &path) const;
 
-  void AddItem(bool include, CItem &item, int ignoreWildcardIndex = -1);
+  void AddItem(bool include, CItem &item);
   void AddItem(bool include, const UString &path, bool recursive, bool forFile, bool forDir, bool wildcardMatching);
   void AddItem2(bool include, const UString &path, bool recursive, bool wildcardMatching);
 
   bool NeedCheckSubDirs() const;
   bool AreThereIncludeItems() const;
 
-  // bool CheckPath2(bool isAltStream, const UString &path, bool isFile, bool &include) const;
-  // bool CheckPath(bool isAltStream, const UString &path, bool isFile) const;
+  bool CheckPath2(bool isAltStream, const UString &path, bool isFile, bool &include) const;
+  bool CheckPath(bool isAltStream, const UString &path, bool isFile) const;
 
   bool CheckPathToRoot(bool include, UStringVector &pathParts, bool isFile) const;
   // bool CheckPathToRoot(const UString &path, bool isFile, bool include) const;
@@ -128,7 +136,7 @@ public:
     { return (Pairs.Size() == 1 && Pairs.Front().Prefix.IsEmpty()); }
   
   void AddItem(ECensorPathMode pathMode, bool include, const UString &path, bool recursive, bool wildcardMatching);
-  // bool CheckPath(bool isAltStream, const UString &path, bool isFile) const;
+  bool CheckPath(bool isAltStream, const UString &path, bool isFile) const;
   void ExtendExclude();
 
   void AddPathsToCensor(NWildcard::ECensorPathMode censorPathMode);

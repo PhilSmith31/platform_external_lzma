@@ -48,7 +48,7 @@ bool ReadNamesFromListFile(CFSTR fileName, UStringVector &strings, UINT codePage
       return false;
     file.Close();
     unsigned num = (unsigned)fileSize / 2;
-    wchar_t *p = u.GetBuf(num);
+    wchar_t *p = u.GetBuffer(num);
     if (codePage == MY__CP_UTF16)
       for (unsigned i = 0; i < num; i++)
       {
@@ -65,20 +65,20 @@ bool ReadNamesFromListFile(CFSTR fileName, UStringVector &strings, UINT codePage
           return false;
         p[i] = c;
       }
-    p[num] = 0;
-    u.ReleaseBuf_SetLen(num);
+    u.ReleaseBuffer(num);
   }
   else
   {
     AString s;
-    char *p = s.GetBuf((unsigned)fileSize);
+    char *p = s.GetBuffer((unsigned)fileSize);
     UInt32 processed;
     if (!file.Read(p, (UInt32)fileSize, processed))
       return false;
     if (processed != fileSize)
       return false;
     file.Close();
-    s.ReleaseBuf_CalcLen((unsigned)processed);
+    p[processed] = 0;
+    s.ReleaseBuffer();
     if (s.Len() != processed)
       return false;
     

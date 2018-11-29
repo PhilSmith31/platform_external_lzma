@@ -14,10 +14,8 @@ static int CompareStrings(const unsigned *p1, const unsigned *p2, void *param)
 
 void SortFileNames(const UStringVector &strings, CUIntVector &indices)
 {
-  const unsigned numItems = strings.Size();
+  unsigned numItems = strings.Size();
   indices.ClearAndSetSize(numItems);
-  if (numItems == 0)
-    return;
   unsigned *vals = &indices[0];
   for (unsigned i = 0; i < numItems; i++)
     vals[i] = i;

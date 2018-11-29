@@ -152,7 +152,7 @@ public:
   {
     WaitCreating();
     if (_wasCreated)
-      PostMsg(kCloseMessage);
+      PostMessage(kCloseMessage);
     else
       _needClose = true;
   };

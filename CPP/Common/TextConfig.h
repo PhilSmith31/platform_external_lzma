@@ -17,3 +17,5 @@ int FindTextConfigItem(const CObjectVector<CTextConfigPair> &pairs, const UStrin
 UString GetTextConfigValue(const CObjectVector<CTextConfigPair> &pairs, const UString &id);
 
 #endif
+
+

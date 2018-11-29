@@ -2,8 +2,6 @@
 
 #include "StdAfx.h"
 
-#include "../../../Common/MyWindows.h"
-
 #include "../../../Common/MyInitGuid.h"
 
 #include "../../../Common/CommandLineParser.h"
@@ -23,8 +21,6 @@
 #include "../../UI/Console/OpenCallbackConsole.h"
 
 #include "../../MyVersion.h"
-
-#include "../../../../C/DllSecur.h"
 
 using namespace NWindows;
 using namespace NFile;
@@ -105,10 +101,10 @@ static const wchar_t *kUniversalWildcard = L"*";
 static const int kCommandIndex = 0;
 
 static const char *kHelpString =
-    "\nUsage: 7zSFX [<command>] [<switches>...] [<file_name>...]\n"
+    "\nUsage: 7zSFX [<command>] [<switches>...]\n"
     "\n"
     "<Commands>\n"
-    // "  l: List contents of archive\n"
+    "  l: List contents of archive\n"
     "  t: Test integrity of archive\n"
     "  x: eXtract files with full pathname (default)\n"
     "<Switches>\n"
@@ -224,6 +220,13 @@ void AddCommandLineWildcardToCensor(NWildcard::CCensor &wildcardCensor,
     ShowMessageAndThrowException(kIncorrectWildcardInCommandLine, NExitCode::kUserError);
 }
 
+void AddToCensorFromNonSwitchesStrings(NWildcard::CCensor &wildcardCensor,
+    const UStringVector & /* nonSwitchStrings */, NRecursedType::EEnum type,
+    bool /* thereAreSwitchIncludeWildcards */)
+{
+  AddCommandLineWildcardToCensor(wildcardCensor, kUniversalWildcard, true, type);
+}
+
 
 #ifndef _WIN32
 static void GetArguments(int numArgs, const char *args[], UStringVector &parts)
@@ -243,11 +246,6 @@ int Main2(
   #endif
 )
 {
-  #ifdef _WIN32
-  // do we need load Security DLLs for console program?
-  LoadSecurityDlls();
-  #endif
-
   #if defined(_WIN32) && !defined(UNDER_CE)
   SetFileApisToOEM();
   #endif
@@ -283,16 +281,9 @@ int Main2(
   commandStrings.Delete(0);
 
   NCommandLineParser::CParser parser(kNumSwitches);
-  
   try
   {
-    if (!parser.ParseStrings(kSwitchForms, commandStrings))
-    {
-      g_StdOut << "Command line error:" << endl
-          << parser.ErrorMessage << endl
-          << parser.ErrorLine << endl;
-      return NExitCode::kUserError;
-    }
+    parser.ParseStrings(kSwitchForms, commandStrings);
   }
   catch(...)
   {
@@ -304,23 +295,19 @@ int Main2(
     PrintHelp();
     return 0;
   }
-  
   const UStringVector &nonSwitchStrings = parser.NonSwitchStrings;
 
-  unsigned curCommandIndex = 0;
+  int numNonSwitchStrings = nonSwitchStrings.Size();
 
   CArchiveCommand command;
-  if (nonSwitchStrings.IsEmpty())
+  if (numNonSwitchStrings == 0)
     command.CommandType = NCommandType::kFullExtract;
   else
   {
-    const UString &cmd = nonSwitchStrings[curCommandIndex];
-    if (!ParseArchiveCommand(cmd, command))
-    {
-      g_StdOut << "ERROR: Unknown command:" << endl << cmd << endl;
-      return NExitCode::kUserError;
-    }
-    curCommandIndex = 1;
+    if (numNonSwitchStrings > 1)
+      PrintHelpAndExit();
+    if (!ParseArchiveCommand(nonSwitchStrings[kCommandIndex], command))
+      PrintHelpAndExit();
   }
 
 
@@ -329,17 +316,11 @@ int Main2(
 
   NWildcard::CCensor wildcardCensor;
   
-  {
-    if (nonSwitchStrings.Size() == curCommandIndex)
-      AddCommandLineWildcardToCensor(wildcardCensor, kUniversalWildcard, true, recursedType);
-    for (; curCommandIndex < nonSwitchStrings.Size(); curCommandIndex++)
-    {
-      const UString &s = nonSwitchStrings[curCommandIndex];
-      if (s.IsEmpty())
-        throw "Empty file path";
-      AddCommandLineWildcardToCensor(wildcardCensor, s, true, recursedType);
-    }
-  }
+  bool thereAreSwitchIncludeWildcards;
+  thereAreSwitchIncludeWildcards = false;
+
+  AddToCensorFromNonSwitchesStrings(wildcardCensor, nonSwitchStrings, recursedType,
+      thereAreSwitchIncludeWildcards);
 
   bool yesToAll = parser[NKey::kYes].ThereIs;
 
@@ -380,32 +361,30 @@ int Main2(
       IUnknown
       #endif
       > compressCodecsInfo = codecs;
-    {
-      HRESULT result = codecs->Load();
-      if (result != S_OK)
-        throw CSystemException(result);
-    }
+    HRESULT result = codecs->Load();
+    if (result != S_OK)
+      throw CSystemException(result);
 
     if (command.CommandType != NCommandType::kList)
     {
       CExtractCallbackConsole *ecs = new CExtractCallbackConsole;
       CMyComPtr<IFolderArchiveExtractCallback> extractCallback = ecs;
-      ecs->Init(g_StdStream, &g_StdErr, g_StdStream);
+      ecs->OutStream = g_StdStream;
 
       #ifndef _NO_CRYPTO
       ecs->PasswordIsDefined = passwordEnabled;
       ecs->Password = password;
       #endif
 
-      /*
+      ecs->Init();
+
       COpenCallbackConsole openCallback;
-      openCallback.Init(g_StdStream, g_StdStream);
+      openCallback.OutStream = g_StdStream;
 
       #ifndef _NO_CRYPTO
       openCallback.PasswordIsDefined = passwordEnabled;
       openCallback.Password = password;
       #endif
-      */
 
       CExtractOptions eo;
       eo.StdOutMode = false;
@@ -423,7 +402,7 @@ int Main2(
           codecs, CObjectVector<COpenType>(), CIntVector(),
           v1, v2,
           wildcardCensorHead,
-          eo, ecs, ecs,
+          eo, &openCallback, ecs,
           // NULL, // hash
           errorMessage, stat);
       if (!errorMessage.IsEmpty())
@@ -446,9 +425,6 @@ int Main2(
     }
     else
     {
-      throw CSystemException(E_NOTIMPL);
-
-      /*
       UInt64 numErrors = 0;
       UInt64 numWarnings = 0;
       HRESULT result = ListArchives(
@@ -471,7 +447,6 @@ int Main2(
       }
       if (result != S_OK)
         throw CSystemException(result);
-      */
     }
   }
   return 0;

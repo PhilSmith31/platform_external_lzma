@@ -18,15 +18,11 @@ namespace NControl {
 LRESULT CComboBox::GetLBText(int index, CSysString &s)
 {
   s.Empty();
-  LRESULT len = GetLBTextLen(index); // length, excluding the terminating null character
+  LRESULT len = GetLBTextLen(index);
   if (len == CB_ERR)
     return len;
-  LRESULT len2 = GetLBText(index, s.GetBuf((unsigned)len));
-  if (len2 == CB_ERR)
-    return len;
-  if (len > len2)
-    len = len2;
-  s.ReleaseBuf_CalcLen((unsigned)len);
+  len = GetLBText(index, s.GetBuffer((int)len + 1));
+  s.ReleaseBuffer();
   return len;
 }
 
@@ -34,7 +30,7 @@ LRESULT CComboBox::GetLBText(int index, CSysString &s)
 LRESULT CComboBox::AddString(LPCWSTR s)
 {
   if (g_IsNT)
-    return SendMsgW(CB_ADDSTRING, 0, (LPARAM)s);
+    return SendMessageW(CB_ADDSTRING, 0, (LPARAM)s);
   return AddString(GetSystemString(s));
 }
 
@@ -43,15 +39,11 @@ LRESULT CComboBox::GetLBText(int index, UString &s)
   s.Empty();
   if (g_IsNT)
   {
-    LRESULT len = SendMsgW(CB_GETLBTEXTLEN, index, 0);
+    LRESULT len = SendMessageW(CB_GETLBTEXTLEN, index, 0);
     if (len == CB_ERR)
       return len;
-    LRESULT len2 = SendMsgW(CB_GETLBTEXT, index, (LPARAM)s.GetBuf((unsigned)len));
-    if (len2 == CB_ERR)
-      return len;
-    if (len > len2)
-      len = len2;
-    s.ReleaseBuf_CalcLen((unsigned)len);
+    len = SendMessageW(CB_GETLBTEXT, index, (LPARAM)s.GetBuffer((int)len + 1));
+    s.ReleaseBuffer();
     return len;
   }
   AString sa;

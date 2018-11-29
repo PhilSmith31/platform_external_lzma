@@ -11,7 +11,7 @@ static bool IsString1PrefixedByString2_NoCase(const wchar_t *u, const char *a)
     char c = *a;
     if (c == 0)
       return true;
-    if ((unsigned char)MyCharLower_Ascii(c) != MyCharLower_Ascii(*u))
+    if (MyCharLower_Ascii(c) != MyCharLower_Ascii(*u))
       return false;
     a++;
     u++;
@@ -135,28 +135,24 @@ bool CParser::ParseString(const UString &s, const CSwitchForm *switchForms)
   switch (form.Type)
   {
     case NSwitchType::kMinus:
-      if (rem == 1)
+      if (rem != 0)
       {
         sw.WithMinus = (s[pos] == '-');
         if (sw.WithMinus)
-          return true;
-        ErrorMessage = "Incorrect switch postfix:";
-        return false;
+          pos++;
       }
       break;
       
     case NSwitchType::kChar:
-      if (rem == 1)
+      if (rem != 0)
       {
         wchar_t c = s[pos];
         if (c <= 0x7F)
         {
           sw.PostCharIndex = FindCharPosInString(form.PostCharSet, (char)c);
           if (sw.PostCharIndex >= 0)
-            return true;
+            pos++;
         }
-        ErrorMessage = "Incorrect switch postfix:";
-        return false;
       }
       break;
       
@@ -164,7 +160,6 @@ bool CParser::ParseString(const UString &s, const CSwitchForm *switchForms)
       sw.PostStrings.Add((const wchar_t *)s + pos);
       return true;
   }
-
   if (pos != s.Len())
   {
     ErrorMessage = "Too long switch:";

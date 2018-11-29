@@ -40,13 +40,12 @@ STDMETHODIMP COpenCallbackImp::GetProperty(PROPID propID, PROPVARIANT *value)
   COM_TRY_BEGIN
   NCOM::CPropVariant prop;
   if (_subArchiveMode)
-    switch (propID)
+    switch(propID)
     {
       case kpidName: prop = _subArchiveName; break;
-      // case kpidSize:  prop = _subArchiveSize; break; // we don't use it now
     }
   else
-    switch (propID)
+    switch(propID)
     {
       case kpidName:  prop = _fileInfo.Name; break;
       case kpidIsDir:  prop = _fileInfo.IsDir(); break;
@@ -74,40 +73,18 @@ struct CInFileStreamVol: public CInFileStream
   }
 };
 
-
-// from ArchiveExtractCallback.cpp
-bool IsSafePath(const UString &path);
-
 STDMETHODIMP COpenCallbackImp::GetStream(const wchar_t *name, IInStream **inStream)
 {
   COM_TRY_BEGIN
   *inStream = NULL;
-  
   if (_subArchiveMode)
     return S_FALSE;
   if (Callback)
   {
     RINOK(Callback->Open_CheckBreak());
   }
-
-  UString name2 = name;
-
-  
-  #ifndef _SFX
-  
-  #ifdef _WIN32
-  name2.Replace(L'/', WCHAR_PATH_SEPARATOR);
-  #endif
-
-  // if (!allowAbsVolPaths)
-  if (!IsSafePath(name2))
-    return S_FALSE;
-  
-  #endif
-
-
   FString fullPath;
-  if (!NFile::NName::GetFullPath(_folderPrefix, us2fs(name2), fullPath))
+  if (!NFile::NName::GetFullPath(_folderPrefix, us2fs(name), fullPath))
     return S_FALSE;
   if (!_fileInfo.Find(fullPath))
     return S_FALSE;
@@ -116,15 +93,10 @@ STDMETHODIMP COpenCallbackImp::GetStream(const wchar_t *name, IInStream **inStre
   CInFileStreamVol *inFile = new CInFileStreamVol;
   CMyComPtr<IInStream> inStreamTemp = inFile;
   if (!inFile->Open(fullPath))
-  {
-    DWORD lastError = ::GetLastError();
-    if (lastError == 0)
-      return E_FAIL;
-    return HRESULT_FROM_WIN32(lastError);
-  }
+    return ::GetLastError();
 
   FileSizes.Add(_fileInfo.Size);
-  FileNames.Add(name2);
+  FileNames.Add(name);
   inFile->FileNameIndex = FileNames_WasUsed.Add(true);
   inFile->OpenCallbackImp = this;
   inFile->OpenCallbackRef = this;
@@ -147,7 +119,6 @@ STDMETHODIMP COpenCallbackImp::CryptoGetTextPassword(BSTR *password)
   }
   if (!Callback)
     return E_NOTIMPL;
-  PasswordWasAsked = true;
   return Callback->Open_CryptoGetTextPassword(password);
   COM_TRY_END
 }

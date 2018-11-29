@@ -12,8 +12,6 @@
 #include "UpdateAction.h"
 #include "UpdateCallback.h"
 
-#include "DirItem.h"
-
 enum EArcNameMode
 {
   k_ArcNameMode_Smart,
@@ -146,40 +144,32 @@ struct CUpdateOptions
   CRecordVector<UInt64> VolumesSizes;
 };
 
-struct CUpdateErrorInfo
+struct CErrorInfo
 {
   DWORD SystemError;
-  AString Message;
-  FStringVector FileNames;
-
-  bool ThereIsError() const { return SystemError != 0 || !Message.IsEmpty() || !FileNames.IsEmpty(); }
-  HRESULT Get_HRESULT_Error() const { return SystemError == 0 ? E_FAIL : HRESULT_FROM_WIN32(SystemError); }
-  void SetFromLastError(const char *message);
-  HRESULT SetFromLastError(const char *message, const FString &fileName);
-
-  CUpdateErrorInfo(): SystemError(0) {};
+  FString FileName;
+  FString FileName2;
+  UString Message;
+  // UStringVector ErrorPaths;
+  // CRecordVector<DWORD> ErrorCodes;
+  CErrorInfo(): SystemError(0) {};
 };
 
-struct CFinishArchiveStat
+struct CUpdateErrorInfo: public CErrorInfo
 {
-  UInt64 OutArcFileSize;
-
-  CFinishArchiveStat(): OutArcFileSize(0) {}
 };
 
 #define INTERFACE_IUpdateCallbackUI2(x) \
   INTERFACE_IUpdateCallbackUI(x) \
-  INTERFACE_IDirItemsCallback(x) \
-  virtual HRESULT OpenResult(const CCodecs *codecs, const CArchiveLink &arcLink, const wchar_t *name, HRESULT result) x; \
+  virtual HRESULT OpenResult(const wchar_t *name, HRESULT result, const wchar_t *errorArcType) x; \
   virtual HRESULT StartScanning() x; \
-  virtual HRESULT FinishScanning(const CDirItemsStat &st) x; \
-  virtual HRESULT StartOpenArchive(const wchar_t *name) x; \
+  virtual HRESULT ScanProgress(UInt64 numFolders, UInt64 numFiles, UInt64 totalSize, const wchar_t *path, bool isDir) x; \
+  virtual HRESULT CanNotFindError(const wchar_t *name, DWORD systemError) x; \
+  virtual HRESULT FinishScanning() x; \
   virtual HRESULT StartArchive(const wchar_t *name, bool updating) x; \
-  virtual HRESULT FinishArchive(const CFinishArchiveStat &st) x; \
-  virtual HRESULT DeletingAfterArchiving(const FString &path, bool isDir) x; \
-  virtual HRESULT FinishDeletingAfterArchiving() x; \
+  virtual HRESULT FinishArchive() x; \
 
-struct IUpdateCallbackUI2: public IUpdateCallbackUI, public IDirItemsCallback
+struct IUpdateCallbackUI2: public IUpdateCallbackUI
 {
   INTERFACE_IUpdateCallbackUI2(=0)
 };

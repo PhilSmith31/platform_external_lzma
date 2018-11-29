@@ -46,8 +46,8 @@ static void ThrowError(const char *message, const UString &s1, const UString &s2
 {
   UString m;
   m.SetFromAscii(message);
-  m.Add_LF(); m += s1;
-  m.Add_LF(); m += s2;
+  m += L'\n'; m += s1;
+  m += L'\n'; m += s2;
   throw m;
 }
 
@@ -92,7 +92,6 @@ void GetUpdatePairInfoList(
 
   {
     arcIndices.ClearAndSetSize(numArcItems);
-    if (numArcItems != 0)
     {
       unsigned *vals = &arcIndices[0];
       for (unsigned i = 0; i < numArcItems; i++)

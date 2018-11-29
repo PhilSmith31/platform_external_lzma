@@ -2,8 +2,6 @@
 
 #include "StdAfx.h"
 
-#include "../Common/MyWindows.h"
-
 #ifdef UNDER_CE
 #include <commdlg.h>
 #endif

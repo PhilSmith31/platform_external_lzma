@@ -71,53 +71,68 @@ struct CSeqName
   UString _changedPart;
   bool _splitStyle;
   
-  bool GetNextName(UString &s)
+  UString GetNextName()
   {
+    UString newName;
+    if (_splitStyle)
     {
-      unsigned i = _changedPart.Len();
-      for (;;)
+      int i;
+      int numLetters = _changedPart.Len();
+      for (i = numLetters - 1; i >= 0; i--)
       {
-        wchar_t c = _changedPart[--i];
-        
-        if (_splitStyle)
+        wchar_t c = _changedPart[i];
+        if (c == 'z')
         {
-          if (c == 'z')
-          {
-            _changedPart.ReplaceOneCharAtPos(i, L'a');
-            if (i == 0)
-              return false;
-            continue;
-          }
-          else if (c == 'Z')
-          {
-            _changedPart.ReplaceOneCharAtPos(i, L'A');
-            if (i == 0)
-              return false;
-            continue;
-          }
+          newName.InsertAtFront('a');
+          continue;
         }
-        else
+        else if (c == 'Z')
         {
-          if (c == '9')
-          {
-            _changedPart.ReplaceOneCharAtPos(i, L'0');
-            if (i == 0)
-            {
-              _changedPart.InsertAtFront(L'1');
-              break;
-            }
-            continue;
-          }
+          newName.InsertAtFront('A');
+          continue;
         }
-
         c++;
-        _changedPart.ReplaceOneCharAtPos(i, c);
+        if ((c == 'z' || c == 'Z') && i == 0)
+        {
+          _unchangedPart += c;
+          wchar_t newChar = (c == 'z') ? L'a' : L'A';
+          newName.Empty();
+          numLetters++;
+          for (int k = 0; k < numLetters; k++)
+            newName += newChar;
+          break;
+        }
+        newName.InsertAtFront(c);
+        i--;
+        for (; i >= 0; i--)
+          newName.InsertAtFront(_changedPart[i]);
         break;
       }
     }
-    
-    s = _unchangedPart + _changedPart;
-    return true;
+    else
+    {
+      int i;
+      int numLetters = _changedPart.Len();
+      for (i = numLetters - 1; i >= 0; i--)
+      {
+        wchar_t c = _changedPart[i];
+        if (c == '9')
+        {
+          newName.InsertAtFront('0');
+          if (i == 0)
+            newName.InsertAtFront('1');
+          continue;
+        }
+        c++;
+        newName.InsertAtFront(c);
+        i--;
+        for (; i >= 0; i--)
+          newName.InsertAtFront(_changedPart[i]);
+        break;
+      }
+    }
+    _changedPart = newName;
+    return _unchangedPart + _changedPart;
   }
 };
 
@@ -141,7 +156,7 @@ HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback *callback)
     name = prop.bstrVal;
   }
   
-  int dotPos = name.ReverseFind_Dot();
+  int dotPos = name.ReverseFind('.');
   const UString prefix = name.Left(dotPos + 1);
   const UString ext = name.Ptr(dotPos + 1);
   UString ext2 = ext;
@@ -181,21 +196,17 @@ HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback *callback)
   seqName._splitStyle = splitStyle;
   
   if (prefix.Len() < 1)
-    _subName.SetFromAscii("file");
+    _subName = L"file";
   else
     _subName.SetFrom(prefix, prefix.Len() - 1);
   
   UInt64 size;
   {
-    /*
     NCOM::CPropVariant prop;
     RINOK(volumeCallback->GetProperty(kpidSize, &prop));
     if (prop.vt != VT_UI8)
       return E_INVALIDARG;
     size = prop.uhVal.QuadPart;
-    */
-    RINOK(stream->Seek(0, STREAM_SEEK_END, &size));
-    RINOK(stream->Seek(0, STREAM_SEEK_SET, NULL));
   }
   
   _totalSize += size;
@@ -203,39 +214,33 @@ HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback *callback)
   _streams.Add(stream);
   
   {
-    const UInt64 numFiles = _streams.Size();
+    UInt64 numFiles = _streams.Size();
     RINOK(callback->SetCompleted(&numFiles, NULL));
   }
   
   for (;;)
   {
-    UString fullName;
-    if (!seqName.GetNextName(fullName))
-      break;
+    const UString fullName = seqName.GetNextName();
     CMyComPtr<IInStream> nextStream;
     HRESULT result = volumeCallback->GetStream(fullName, &nextStream);
     if (result == S_FALSE)
       break;
     if (result != S_OK)
       return result;
-    if (!nextStream)
+    if (!stream)
       break;
     {
-      /*
       NCOM::CPropVariant prop;
       RINOK(volumeCallback->GetProperty(kpidSize, &prop));
       if (prop.vt != VT_UI8)
         return E_INVALIDARG;
       size = prop.uhVal.QuadPart;
-      */
-      RINOK(nextStream->Seek(0, STREAM_SEEK_END, &size));
-      RINOK(nextStream->Seek(0, STREAM_SEEK_SET, NULL));
     }
     _totalSize += size;
     _sizes.Add(size);
     _streams.Add(nextStream);
     {
-      const UInt64 numFiles = _streams.Size();
+      UInt64 numFiles = _streams.Size();
       RINOK(callback->SetCompleted(&numFiles, NULL));
     }
   }
@@ -350,10 +355,15 @@ STDMETHODIMP CHandler::GetStream(UInt32 index, ISequentialInStream **stream)
   COM_TRY_END
 }
 
-REGISTER_ARC_I_NO_SIG(
-  "Split", "001", 0, 0xEA,
+IMP_CreateArcIn
+
+static CArcInfo g_ArcInfo =
+  { "Split", "001", 0, 0xEA,
+  0, { 0 },
   0,
   0,
-  NULL)
+  CreateArc };
+
+REGISTER_ARC(Split)
 
 }}

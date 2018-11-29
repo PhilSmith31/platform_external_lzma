@@ -2,8 +2,6 @@
 
 #include "StdAfx.h"
 
-#include "../../../Common/MyWindows.h"
-
 #include "../../../Common/MyInitGuid.h"
 
 #include "../../../Common/CommandLineParser.h"
@@ -22,8 +20,6 @@
 #include "../../UI/Explorer/MyMessages.h"
 
 #include "ExtractEngine.h"
-
-#include "../../../../C/DllSecur.h"
 
 #include "resource.h"
 
@@ -98,11 +94,12 @@ static bool ReadDataString(CFSTR fileName, LPCSTR startID,
   }
 }
 
-static char kStartID[] = { ',','!','@','I','n','s','t','a','l','l','@','!','U','T','F','-','8','!', 0 };
-static char kEndID[]   = { ',','!','@','I','n','s','t','a','l','l','E','n','d','@','!', 0 };
+static char kStartID[] = ",!@Install@!UTF-8!";
+static char kEndID[] = ",!@InstallEnd@!";
 
-struct CInstallIDInit
+class CInstallIDInit
 {
+public:
   CInstallIDInit()
   {
     kStartID[0] = ';';
@@ -137,10 +134,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   NT_CHECK
 
-  #ifdef _WIN32
-  LoadSecurityDlls();
-  #endif
-
   // InitCommonControls();
 
   UString archiveName, switches;
@@ -154,7 +147,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   switches.Trim();
   bool assumeYes = false;
-  if (switches.IsPrefixedBy_Ascii_NoCase("-y"))
+  if (MyStringCompareNoCase_N(switches, L"-y", 2) == 0)
   {
     assumeYes = true;
     switches = switches.Ptr(2);
@@ -184,7 +177,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
     UString friendlyName = GetTextConfigValue(pairs, L"Title");
     UString installPrompt = GetTextConfigValue(pairs, L"BeginPrompt");
     UString progress = GetTextConfigValue(pairs, L"Progress");
-    if (progress.IsEqualTo_Ascii_NoCase("no"))
+    if (progress.IsEqualToNoCase(L"no"))
       showProgress = false;
     int index = FindTextConfigItem(pairs, L"Directory");
     if (index >= 0)
@@ -213,13 +206,11 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   CCodecs *codecs = new CCodecs;
   CMyComPtr<IUnknown> compressCodecsInfo = codecs;
+  HRESULT result = codecs->Load();
+  if (result != S_OK)
   {
-    HRESULT result = codecs->Load();
-    if (result != S_OK)
-    {
-      ShowErrorMessage(L"Can not load codecs");
-      return 1;
-    }
+    ShowErrorMessage(L"Can not load codecs");
+    return 1;
   }
 
   const FString tempDirPath = tempDir.GetPath();
@@ -274,7 +265,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
     if (!switches.IsEmpty())
     {
-      executeParameters.Add_Space_if_NotEmpty();
+      if (!executeParameters.IsEmpty())
+        executeParameters += L' ';
       executeParameters += switches;
     }
 
@@ -289,7 +281,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
     execInfo.hProcess = 0;
     /* BOOL success = */ ::ShellExecuteEx(&execInfo);
     UINT32 result = (UINT32)(UINT_PTR)execInfo.hInstApp;
-    if (result <= 32)
+    if(result <= 32)
     {
       if (!assumeYes)
         ShowErrorMessage(L"Can not open file");
@@ -323,7 +315,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
     if (!switches.IsEmpty())
     {
-      appLaunched.Add_Space();
+      appLaunched += L' ';
       appLaunched += switches;
     }
     STARTUPINFO startupInfo;

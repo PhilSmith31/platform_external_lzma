@@ -199,7 +199,7 @@ void COutArchive::WriteNumber(UInt64 value)
     mask >>= 1;
   }
   WriteByte(firstByte);
-  for (; i > 0; i--)
+  for (;i > 0; i--)
   {
     WriteByte((Byte)value);
     value >>= 8;
@@ -254,33 +254,31 @@ void COutArchive::WriteFolder(const CFolder &folder)
 {
   WriteNumber(folder.Coders.Size());
   unsigned i;
-  
   for (i = 0; i < folder.Coders.Size(); i++)
   {
     const CCoderInfo &coder = folder.Coders[i];
     {
+      size_t propsSize = coder.Props.Size();
+      
       UInt64 id = coder.MethodID;
-      unsigned idSize;
+      int idSize;
       for (idSize = 1; idSize < sizeof(id); idSize++)
         if ((id >> (8 * idSize)) == 0)
           break;
-      idSize &= 0xF;
-      Byte temp[16];
-      for (unsigned t = idSize; t != 0; t--, id >>= 8)
-        temp[t] = (Byte)(id & 0xFF);
-  
-      Byte b = (Byte)(idSize);
+      Byte longID[15];
+      for (int t = idSize - 1; t >= 0 ; t--, id >>= 8)
+        longID[t] = (Byte)(id & 0xFF);
+      Byte b;
+      b = (Byte)(idSize & 0xF);
       bool isComplex = !coder.IsSimpleCoder();
       b |= (isComplex ? 0x10 : 0);
-
-      size_t propsSize = coder.Props.Size();
-      b |= ((propsSize != 0) ? 0x20 : 0);
-      temp[0] = b;
-      WriteBytes(temp, idSize + 1);
+      b |= ((propsSize != 0) ? 0x20 : 0 );
+      WriteByte(b);
+      WriteBytes(longID, idSize);
       if (isComplex)
       {
-        WriteNumber(coder.NumStreams);
-        WriteNumber(1); // NumOutStreams;
+        WriteNumber(coder.NumInStreams);
+        WriteNumber(coder.NumOutStreams);
       }
       if (propsSize == 0)
         continue;
@@ -288,17 +286,17 @@ void COutArchive::WriteFolder(const CFolder &folder)
       WriteBytes(coder.Props, propsSize);
     }
   }
-  
-  for (i = 0; i < folder.Bonds.Size(); i++)
+  for (i = 0; i < folder.BindPairs.Size(); i++)
   {
-    const CBond &bond = folder.Bonds[i];
-    WriteNumber(bond.PackIndex);
-    WriteNumber(bond.UnpackIndex);
+    const CBindPair &bindPair = folder.BindPairs[i];
+    WriteNumber(bindPair.InIndex);
+    WriteNumber(bindPair.OutIndex);
   }
-  
   if (folder.PackStreams.Size() > 1)
     for (i = 0; i < folder.PackStreams.Size(); i++)
+    {
       WriteNumber(folder.PackStreams[i]);
+    }
 }
 
 void COutArchive::WriteBoolVector(const CBoolVector &boolVector)
@@ -523,10 +521,7 @@ HRESULT COutArchive::EncodeStream(
   UInt64 unpackSize;
   RINOK(encoder.Encode(
       EXTERNAL_CODECS_LOC_VARS
-      stream,
-      // NULL,
-      &dataSize64,
-      folders.AddNew(), outFolders.CoderUnpackSizes, unpackSize, SeqStream, packSizes, NULL))
+      stream, NULL, &dataSize64, folders.AddNew(), outFolders.CoderUnpackSizes, unpackSize, SeqStream, packSizes, NULL))
   return S_OK;
 }
 
@@ -540,13 +535,13 @@ void COutArchive::WriteHeader(
   */
   _useAlign = true;
 
-  {
-    UInt64 packSize = 0;
-    FOR_VECTOR (i, db.PackSizes)
-      packSize += db.PackSizes[i];
-    headerOffset = packSize;
-  }
+  unsigned i;
+  
+  UInt64 packedSize = 0;
+  for (i = 0; i < db.PackSizes.Size(); i++)
+    packedSize += db.PackSizes[i];
 
+  headerOffset = packedSize;
 
   WriteByte(NID::kHeader);
 
@@ -560,7 +555,7 @@ void COutArchive::WriteHeader(
 
     CRecordVector<UInt64> unpackSizes;
     CUInt32DefVector digests;
-    FOR_VECTOR (i, db.Files)
+    for (i = 0; i < db.Files.Size(); i++)
     {
       const CFileItem &file = db.Files[i];
       if (!file.HasStream)
@@ -588,17 +583,14 @@ void COutArchive::WriteHeader(
     CBoolVector emptyStreamVector;
     emptyStreamVector.ClearAndSetSize(db.Files.Size());
     unsigned numEmptyStreams = 0;
-    {
-      FOR_VECTOR (i, db.Files)
-        if (db.Files[i].HasStream)
-          emptyStreamVector[i] = false;
-        else
-        {
-          emptyStreamVector[i] = true;
-          numEmptyStreams++;
-        }
-    }
-
+    for (i = 0; i < db.Files.Size(); i++)
+      if (db.Files[i].HasStream)
+        emptyStreamVector[i] = false;
+      else
+      {
+        emptyStreamVector[i] = true;
+        numEmptyStreams++;
+      }
     if (numEmptyStreams != 0)
     {
       WritePropBoolVector(NID::kEmptyStream, emptyStreamVector);
@@ -608,8 +600,7 @@ void COutArchive::WriteHeader(
       antiVector.ClearAndSetSize(numEmptyStreams);
       bool thereAreEmptyFiles = false, thereAreAntiItems = false;
       unsigned cur = 0;
-      
-      FOR_VECTOR (i, db.Files)
+      for (i = 0; i < db.Files.Size(); i++)
       {
         const CFileItem &file = db.Files[i];
         if (file.HasStream)
@@ -676,21 +667,17 @@ void COutArchive::WriteHeader(
     CBoolVector boolVector;
     boolVector.ClearAndSetSize(db.Files.Size());
     unsigned numDefined = 0;
-    
+    for (i = 0; i < db.Files.Size(); i++)
     {
-      FOR_VECTOR (i, db.Files)
-      {
-        bool defined = db.Files[i].AttribDefined;
-        boolVector[i] = defined;
-        if (defined)
-          numDefined++;
-      }
+      bool defined = db.Files[i].AttribDefined;
+      boolVector[i] = defined;
+      if (defined)
+        numDefined++;
     }
-    
     if (numDefined != 0)
     {
       WriteAlignedBoolHeader(boolVector, numDefined, NID::kWinAttrib, 4);
-      FOR_VECTOR (i, db.Files)
+      for (i = 0; i < db.Files.Size(); i++)
       {
         const CFileItem &file = db.Files[i];
         if (file.AttribDefined)

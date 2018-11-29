@@ -23,6 +23,10 @@ enum
   kStatus_Error
 };
 
+static void *SzBigAlloc(void *, size_t size) { return BigAlloc(size); }
+static void SzBigFree(void *, void *address) { BigFree(address); }
+static ISzAlloc g_BigAlloc = { SzBigAlloc, SzBigFree };
+
 CDecoder::~CDecoder()
 {
   ::MidFree(_outBuf);
@@ -49,7 +53,7 @@ STDMETHODIMP CDecoder::SetDecoderProperties2(const Byte *props, UInt32 size)
 
 HRESULT CDecoder::CodeSpec(Byte *memStream, UInt32 size)
 {
-  switch (_status)
+  switch(_status)
   {
     case kStatus_Finished: return S_OK;
     case kStatus_Error: return S_FALSE;

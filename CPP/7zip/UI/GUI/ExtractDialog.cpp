@@ -143,7 +143,7 @@ bool CExtractDialog::OnInit()
       GetText(s);
     if (!ArcPath.IsEmpty())
     {
-      s.AddAscii(" : ");
+      s += L" : ";
       s += ArcPath;
     }
     SetText(s);
@@ -253,7 +253,7 @@ void CExtractDialog::UpdatePasswordControl()
 
 bool CExtractDialog::OnButtonClicked(int buttonID, HWND buttonHWND)
 {
-  switch (buttonID)
+  switch(buttonID)
   {
     case IDB_EXTRACT_SET_PATH:
       OnButtonSetPath();
@@ -289,7 +289,7 @@ void CExtractDialog::OnButtonSetPath()
 void AddUniqueString(UStringVector &list, const UString &s)
 {
   FOR_VECTOR (i, list)
-    if (s.IsEqualTo_NoCase(list[i]))
+    if (s.IsEqualToNoCase(list[i]))
       return;
   list.Add(s);
 }

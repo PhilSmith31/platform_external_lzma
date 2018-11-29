@@ -111,11 +111,8 @@ namespace NWorkDir
 
 struct CContextMenuInfo
 {
-  CBoolPair Cascaded;
-  CBoolPair MenuIcons;
-  CBoolPair ElimDup;
-
-  bool Flags_Def;
+  bool Cascaded;
+  bool MenuIcons;
   UInt32 Flags;
 
   void Save() const;

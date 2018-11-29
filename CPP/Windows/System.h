@@ -9,8 +9,7 @@ namespace NWindows {
 namespace NSystem {
 
 UInt32 GetNumberOfProcessors();
-
-bool GetRamSize(UInt64 &size); // returns false, if unknown ram size
+UInt64 GetRamSize();
 
 }}
 

@@ -55,7 +55,8 @@ struct CThreadExtracting
     Result = ArchiveLink.Open2(options, ExtractCallbackSpec);
     if (Result != S_OK)
     {
-      ErrorMessage = kCantOpenArchive;
+      if (Result != S_OK)
+        ErrorMessage = kCantOpenArchive;
       return;
     }
 

@@ -14,7 +14,7 @@ static const char kNoAll = 's';
 static const char kAutoRenameAll = 'u';
 static const char kQuit = 'q';
 
-static const char *kFirstQuestionMessage = "? ";
+static const char *kFirstQuestionMessage = "?\n";
 static const char *kHelpQuestionMessage =
   "(Y)es / (N)o / (A)lways / (S)kip all / A(u)to rename all / (Q)uit? ";
 
@@ -22,19 +22,15 @@ static const char *kHelpQuestionMessage =
 
 NUserAnswerMode::EEnum ScanUserYesNoAllQuit(CStdOutStream *outStream)
 {
-  if (outStream)
-    *outStream << kFirstQuestionMessage;
+  (*outStream) << kFirstQuestionMessage;
   for (;;)
   {
-    if (outStream)
-    {
-      *outStream << kHelpQuestionMessage;
-      outStream->Flush();
-    }
+    (*outStream) << kHelpQuestionMessage;
+    outStream->Flush();
     AString scannedString = g_StdIn.ScanStringUntilNewLine();
     scannedString.Trim();
     if (!scannedString.IsEmpty())
-      switch (::MyCharLower_Ascii(scannedString[0]))
+      switch(::MyCharLower_Ascii(scannedString[0]))
       {
         case kYes:    return NUserAnswerMode::kYes;
         case kNo:     return NUserAnswerMode::kNo;
@@ -54,18 +50,14 @@ NUserAnswerMode::EEnum ScanUserYesNoAllQuit(CStdOutStream *outStream)
 
 UString GetPassword(CStdOutStream *outStream)
 {
-  if (outStream)
-  {
-    *outStream << "\nEnter password"
+  (*outStream) << "\nEnter password"
       #ifdef MY_DISABLE_ECHO
       " (will not be echoed)"
       #endif
       ":";
-    outStream->Flush();
-  }
+  outStream->Flush();
 
   #ifdef MY_DISABLE_ECHO
-  
   HANDLE console = GetStdHandle(STD_INPUT_HANDLE);
   bool wasChanged = false;
   DWORD mode = 0;
@@ -75,16 +67,10 @@ UString GetPassword(CStdOutStream *outStream)
   UString res = g_StdIn.ScanUStringUntilNewLine();
   if (wasChanged)
     SetConsoleMode(console, mode);
-  if (outStream)
-  {
-    *outStream << endl;
-    outStream->Flush();
-  }
+  (*outStream) << "\n";
+  outStream->Flush();
   return res;
-  
   #else
-  
   return g_StdIn.ScanUStringUntilNewLine();
-  
   #endif
 }

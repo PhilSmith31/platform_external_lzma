@@ -24,10 +24,15 @@ void UpdateProduce(
     up2.NewData = up2.NewProps = true;
     up2.UseArcProps = false;
     
-    switch (actionSet.StateActions[(unsigned)pair.State])
+    switch (actionSet.StateActions[pair.State])
     {
       case NPairAction::kIgnore:
-        if (pair.ArcIndex >= 0 && callback)
+        /*
+        if (pair.State != NPairState::kOnlyOnDisk)
+          IgnoreArchiveItem(m_ArchiveItems[pair.ArcIndex]);
+        // cout << "deleting";
+        */
+        if (callback)
           callback->ShowDeleteFile(pair.ArcIndex);
         continue;
 
@@ -62,9 +67,7 @@ void UpdateProduce(
         up2.UseArcProps = (pair.ArcIndex >= 0);
         break;
     }
-
     operationChain.Add(up2);
   }
-  
   operationChain.ReserveDown();
 }

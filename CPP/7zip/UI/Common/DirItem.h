@@ -11,38 +11,6 @@
 
 #include "../../Archive/IArchive.h"
 
-struct CDirItemsStat
-{
-  UInt64 NumDirs;
-  UInt64 NumFiles;
-  UInt64 NumAltStreams;
-  UInt64 FilesSize;
-  UInt64 AltStreamsSize;
-  
-  UInt64 NumErrors;
-  // UInt64 GetTotalItems() const { return NumDirs + NumFiles + NumAltStreams; }
-  
-  UInt64 GetTotalBytes() const { return FilesSize + AltStreamsSize; }
-  
-  CDirItemsStat():
-      NumDirs(0),
-      NumFiles(0),
-      NumAltStreams(0),
-      FilesSize(0),
-      AltStreamsSize(0),
-      NumErrors(0)
-    {}
-};
-
-#define INTERFACE_IDirItemsCallback(x) \
-  virtual HRESULT ScanError(const FString &path, DWORD systemError) x; \
-  virtual HRESULT ScanProgress(const CDirItemsStat &st, const FString &path, bool isDir) x; \
-
-struct IDirItemsCallback
-{
-  INTERFACE_IDirItemsCallback(=0)
-};
-
 struct CDirItem
 {
   UInt64 Size;
@@ -78,7 +46,7 @@ class CDirItems
 
   UString GetPrefixesPath(const CIntVector &parents, int index, const UString &name) const;
 
-  HRESULT EnumerateDir(int phyParent, int logParent, const FString &phyPrefix);
+  void EnumerateDir(int phyParent, int logParent, const FString &phyPrefix);
 
 public:
   CObjectVector<CDirItem> Items;
@@ -86,14 +54,26 @@ public:
   bool SymLinks;
 
   bool ScanAltStreams;
-  
-  CDirItemsStat Stat;
+  FStringVector ErrorPaths;
+  CRecordVector<DWORD> ErrorCodes;
+  UInt64 TotalSize;
+
 
   #ifndef UNDER_CE
-  HRESULT SetLinkInfo(CDirItem &dirItem, const NWindows::NFile::NFind::CFileInfo &fi,
+  void SetLinkInfo(CDirItem &dirItem, const NWindows::NFile::NFind::CFileInfo &fi,
       const FString &phyPrefix);
   #endif
 
+  void AddError(const FString &path, DWORD errorCode)
+  {
+    ErrorCodes.Add(errorCode);
+    ErrorPaths.Add(path);
+  }
+
+  void AddError(const FString &path)
+  {
+    AddError(path, ::GetLastError());
+  }
 
   #if defined(_WIN32) && !defined(UNDER_CE)
 
@@ -102,30 +82,19 @@ public:
   bool _saclEnabled;
   bool ReadSecure;
   
-  HRESULT AddSecurityItem(const FString &path, int &secureIndex);
+  void AddSecurityItem(const FString &path, int &secureIndex);
 
   #endif
 
-  IDirItemsCallback *Callback;
-
   CDirItems();
 
-  void AddDirFileInfo(int phyParent, int logParent, int secureIndex,
-      const NWindows::NFile::NFind::CFileInfo &fi);
-
-  HRESULT AddError(const FString &path, DWORD errorCode);
-  HRESULT AddError(const FString &path);
-
-  HRESULT ScanProgress(const FString &path);
-
-  // unsigned GetNumFolders() const { return Prefixes.Size(); }
-  FString GetPhyPath(unsigned index) const;
+  int GetNumFolders() const { return Prefixes.Size(); }
+  UString GetPhyPath(unsigned index) const;
   UString GetLogPath(unsigned index) const;
 
   unsigned AddPrefix(int phyParent, int logParent, const UString &prefix);
   void DeleteLastPrefix();
-  
-  HRESULT EnumerateItems2(
+  void EnumerateItems2(
     const FString &phyPrefix,
     const UString &logPrefix,
     const FStringVector &filePaths,

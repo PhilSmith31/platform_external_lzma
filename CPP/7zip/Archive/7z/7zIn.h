@@ -26,8 +26,8 @@ namespace N7z {
 #define _7Z_DECODER_CRYPRO_VARS_DECL
 #define _7Z_DECODER_CRYPRO_VARS
 #else
-#define _7Z_DECODER_CRYPRO_VARS_DECL , ICryptoGetTextPassword *getTextPassword, bool &isEncrypted, bool &passwordIsDefined, UString &password
-#define _7Z_DECODER_CRYPRO_VARS , getTextPassword, isEncrypted, passwordIsDefined, password
+#define _7Z_DECODER_CRYPRO_VARS_DECL , ICryptoGetTextPassword *getTextPassword, bool &isEncrypted, bool &passwordIsDefined
+#define _7Z_DECODER_CRYPRO_VARS , getTextPassword, isEncrypted, passwordIsDefined
 #endif
 
 struct CParsedMethods
@@ -39,11 +39,6 @@ struct CParsedMethods
   CParsedMethods(): Lzma2Prop(0), LzmaDic(0) {}
 };
 
-struct CFolderEx: public CFolder
-{
-  unsigned UnpackCoder;
-};
-
 struct CFolders
 {
   CNum NumPackStreams;
@@ -52,10 +47,10 @@ struct CFolders
   CObjArray<UInt64> PackPositions; // NumPackStreams + 1
   // CUInt32DefVector PackCRCs; // we don't use PackCRCs now
 
-  CUInt32DefVector FolderCRCs;             // NumFolders
+  CUInt32DefVector FolderCRCs;              // NumFolders
   CObjArray<CNum> NumUnpackStreamsVector;  // NumFolders
 
-  CObjArray<UInt64> CoderUnpackSizes;      // including unpack sizes of bond coders
+  CObjArray<UInt64> CoderUnpackSizes;      // including unpack sizes of bind coders
   CObjArray<CNum> FoToCoderUnpackSizes;    // NumFolders + 1
   CObjArray<CNum> FoStartPackStreamIndex;  // NumFolders + 1
   CObjArray<Byte> FoToMainUnpackSizeIndex; // NumFolders
@@ -66,15 +61,10 @@ struct CFolders
   CParsedMethods ParsedMethods;
 
   void ParseFolderInfo(unsigned folderIndex, CFolder &folder) const;
-  void ParseFolderEx(unsigned folderIndex, CFolderEx &folder) const
-  {
-    ParseFolderInfo(folderIndex, folder);
-    folder.UnpackCoder = FoToMainUnpackSizeIndex[folderIndex];
-  }
   
   unsigned GetNumFolderUnpackSizes(unsigned folderIndex) const
   {
-    return (unsigned)(FoToCoderUnpackSizes[folderIndex + 1] - FoToCoderUnpackSizes[folderIndex]);
+    return FoToCoderUnpackSizes[folderIndex + 1] - FoToCoderUnpackSizes[folderIndex];
   }
 
   UInt64 GetFolderUnpackSize(unsigned folderIndex) const
@@ -86,8 +76,6 @@ struct CFolders
   {
     return PackPositions[index + 1] - PackPositions[index];
   }
-
-  CFolders(): NumPackStreams(0), NumFolders(0) {}
 
   void Clear()
   {
@@ -115,9 +103,9 @@ struct CDatabase: public CFolders
   CUInt64DefVector ATime;
   CUInt64DefVector MTime;
   CUInt64DefVector StartPos;
-  CBoolVector IsAnti;
+  CRecordVector<bool> IsAnti;
   /*
-  CBoolVector IsAux;
+  CRecordVector<bool> IsAux;
   CByteBuffer SecureBuf;
   CRecordVector<UInt32> SecureIDs;
   */
@@ -160,14 +148,13 @@ struct CDatabase: public CFolders
   bool IsItemAnti(unsigned index) const { return (index < IsAnti.Size() && IsAnti[index]); }
   // bool IsItemAux(unsigned index) const { return (index < IsAux.Size() && IsAux[index]); }
 
-  /*
-  const void* GetName(unsigned index) const
+  const void * GetName(unsigned index) const
   {
     if (!NameOffsets || !NamesBuf)
       return NULL;
-    return (void *)((const Byte *)NamesBuf + NameOffsets[index] * 2);
+    return (const void *)((const Byte *)NamesBuf + NameOffsets[index] * 2);
   };
-  */
+
   void GetPath(unsigned index, UString &path) const;
   HRESULT GetPath_Prop(unsigned index, PROPVARIANT *path) const throw();
 };
@@ -194,9 +181,8 @@ struct CInArchiveInfo
 struct CDbEx: public CDatabase
 {
   CInArchiveInfo ArcInfo;
-  
-  CObjArray<CNum> FolderStartFileIndex;
-  CObjArray<CNum> FileIndexToFolderIndexMap;
+  CRecordVector<CNum> FolderStartFileIndex;
+  CRecordVector<CNum> FileIndexToFolderIndexMap;
 
   UInt64 HeadersSize;
   UInt64 PhySize;
@@ -248,8 +234,8 @@ struct CDbEx: public CDatabase
     
     // SecureOffsets.Clear();
     ArcInfo.Clear();
-    FolderStartFileIndex.Free();
-    FileIndexToFolderIndexMap.Free();
+    FolderStartFileIndex.Clear();
+    FileIndexToFolderIndexMap.Clear();
 
     HeadersSize = 0;
     PhySize = 0;
@@ -257,22 +243,22 @@ struct CDbEx: public CDatabase
 
   void FillLinks();
   
-  UInt64 GetFolderStreamPos(CNum folderIndex, unsigned indexInFolder) const
+  UInt64 GetFolderStreamPos(unsigned folderIndex, unsigned indexInFolder) const
   {
     return ArcInfo.DataStartPosition +
         PackPositions[FoStartPackStreamIndex[folderIndex] + indexInFolder];
   }
   
-  UInt64 GetFolderFullPackSize(CNum folderIndex) const
+  UInt64 GetFolderFullPackSize(unsigned folderIndex) const
   {
     return
       PackPositions[FoStartPackStreamIndex[folderIndex + 1]] -
       PackPositions[FoStartPackStreamIndex[folderIndex]];
   }
   
-  UInt64 GetFolderPackStreamSize(CNum folderIndex, unsigned streamIndex) const
+  UInt64 GetFolderPackStreamSize(unsigned folderIndex, unsigned streamIndex) const
   {
-    size_t i = FoStartPackStreamIndex[folderIndex] + streamIndex;
+    unsigned i = FoStartPackStreamIndex[folderIndex] + streamIndex;
     return PackPositions[i + 1] - PackPositions[i];
   }
 
@@ -341,8 +327,6 @@ class CInArchive
 
   UInt64 HeadersSize;
 
-  bool _useMixerMT;
-
   void AddByteStream(const Byte *buffer, size_t size);
   
   void DeleteByteStream(bool needUpdatePos)
@@ -356,6 +340,7 @@ class CInArchive
     }
   }
 
+private:
   HRESULT FindAndReadSignature(IInStream *stream, const UInt64 *searchHeaderSizeLimit);
   
   void ReadBytes(Byte *data, size_t size) { _inByteBack->ReadBytes(data, size); }
@@ -411,11 +396,7 @@ class CInArchive
       _7Z_DECODER_CRYPRO_VARS_DECL
       );
 public:
-  CInArchive(bool useMixerMT):
-      _numInByteBufs(0),
-      _useMixerMT(useMixerMT)
-      {}
-  
+  CInArchive(): _numInByteBufs(0) { }
   HRESULT Open(IInStream *stream, const UInt64 *searchHeaderSizeLimit); // S_FALSE means is not archive
   void Close();
 

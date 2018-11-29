@@ -9,12 +9,11 @@
 
 #include "../../Windows/PropVariant.h"
 
-#include "../Common/FilterCoder.h"
+#include "../Common/CreateCoder.h"
 #include "../Common/ProgressUtils.h"
 #include "../Common/RegisterArc.h"
 #include "../Common/StreamUtils.h"
 
-#include "../Compress/BcjCoder.h"
 #include "../Compress/LzmaDecoder.h"
 
 #include "Common/DummyOutStream.h"
@@ -76,14 +75,14 @@ bool CHeader::Parse(const Byte *buf, bool isThereFilter)
 
 class CDecoder
 {
-  CMyComPtr<ISequentialOutStream> _bcjStream;
-  CFilterCoder *_filterCoder;
   CMyComPtr<ICompressCoder> _lzmaDecoder;
+  CMyComPtr<ISequentialOutStream> _bcjStream;
 public:
   NCompress::NLzma::CDecoder *_lzmaDecoderSpec;
 
   ~CDecoder();
-  HRESULT Create(bool filtered, ISequentialInStream *inStream);
+  HRESULT Create(DECL_EXTERNAL_CODECS_LOC_VARS
+      bool filtered, ISequentialInStream *inStream);
 
   HRESULT Code(const CHeader &header, ISequentialOutStream *outStream, ICompressProgressInfo *progress);
 
@@ -95,7 +94,11 @@ public:
     { return _lzmaDecoderSpec->ReadFromInputStream(data, size, processedSize); }
 };
 
-HRESULT CDecoder::Create(bool filteredMode, ISequentialInStream *inStream)
+static const UInt32 k_BCJ = 0x03030103;
+  
+HRESULT CDecoder::Create(
+    DECL_EXTERNAL_CODECS_LOC_VARS
+    bool filteredMode, ISequentialInStream *inStream)
 {
   if (!_lzmaDecoder)
   {
@@ -108,10 +111,13 @@ HRESULT CDecoder::Create(bool filteredMode, ISequentialInStream *inStream)
   {
     if (!_bcjStream)
     {
-      _filterCoder = new CFilterCoder(false);
-      CMyComPtr<ICompressCoder> coder = _filterCoder;
-      _filterCoder->Filter = new NCompress::NBcj::CCoder(false);
-      _bcjStream = _filterCoder;
+      CMyComPtr<ICompressCoder> coder;
+      RINOK(CreateCoder(EXTERNAL_CODECS_LOC_VARS k_BCJ, coder, false));
+      if (!coder)
+        return E_NOTIMPL;
+      coder.QueryInterface(IID_ISequentialOutStream, &_bcjStream);
+      if (!_bcjStream)
+        return E_NOTIMPL;
     }
   }
 
@@ -137,13 +143,17 @@ HRESULT CDecoder::Code(const CHeader &header, ISequentialOutStream *outStream,
     RINOK(setDecoderProperties->SetDecoderProperties2(header.LzmaProps, 5));
   }
 
+  CMyComPtr<ICompressSetOutStream> setOutStream;
+
   bool filteredMode = (header.FilterID == 1);
 
   if (filteredMode)
   {
-    RINOK(_filterCoder->SetOutStream(outStream));
+    _bcjStream.QueryInterface(IID_ICompressSetOutStream, &setOutStream);
+    if (!setOutStream)
+      return E_NOTIMPL;
+    RINOK(setOutStream->SetOutStream(outStream));
     outStream = _bcjStream;
-    RINOK(_filterCoder->SetOutStreamSize(NULL));
   }
 
   const UInt64 *Size = header.HasSize() ? &header.Size : NULL;
@@ -151,16 +161,18 @@ HRESULT CDecoder::Code(const CHeader &header, ISequentialOutStream *outStream,
 
   if (filteredMode)
   {
+    CMyComPtr<IOutStreamFlush> flush;
+    _bcjStream.QueryInterface(IID_IOutStreamFlush, &flush);
+    if (flush)
     {
-      HRESULT res2 = _filterCoder->OutStreamFinish();
+      HRESULT res2 = flush->Flush();
       if (res == S_OK)
         res = res2;
     }
-    HRESULT res2 = _filterCoder->ReleaseOutStream();
+    HRESULT res2 = setOutStream->ReleaseOutStream();
     if (res == S_OK)
       res = res2;
   }
-  
   RINOK(res);
 
   if (header.HasSize())
@@ -174,6 +186,7 @@ HRESULT CDecoder::Code(const CHeader &header, ISequentialOutStream *outStream,
 class CHandler:
   public IInArchive,
   public IArchiveOpenSeq,
+  PUBLIC_ISetCompressCodecsInfo
   public CMyUnknownImp
 {
   CHeader _header;
@@ -197,8 +210,15 @@ class CHandler:
   UInt64 _unpackSize;
   UInt64 _numStreams;
 
+  DECL_EXTERNAL_CODECS_VARS
+  DECL_ISetCompressCodecsInfo
+
 public:
-  MY_UNKNOWN_IMP2(IInArchive, IArchiveOpenSeq)
+  MY_QUERYINTERFACE_BEGIN2(IInArchive)
+  MY_QUERYINTERFACE_ENTRY(IArchiveOpenSeq)
+  QUERY_ENTRY_ISetCompressCodecsInfo
+  MY_QUERYINTERFACE_END
+  MY_ADDREF_RELEASE
 
   INTERFACE_IInArchive(;)
   STDMETHOD(OpenSeq)(ISequentialInStream *stream);
@@ -407,7 +427,6 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
     Int32 testMode, IArchiveExtractCallback *extractCallback)
 {
   COM_TRY_BEGIN
-
   if (numItems == 0)
     return S_OK;
   if (numItems != (UInt32)(Int32)-1 && (numItems != 1 || indices[0] != 0))
@@ -447,7 +466,9 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
     _needSeekToStart = true;
 
   CDecoder decoder;
-  HRESULT result = decoder.Create(_lzma86, _seqStream);
+  HRESULT result = decoder.Create(
+      EXTERNAL_CODECS_VARS
+      _lzma86, _seqStream);
   RINOK(result);
  
   bool firstItem = true;
@@ -541,33 +562,43 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
 
   outStream.Release();
   return extractCallback->SetOperationResult(opResult);
-
   COM_TRY_END
 }
 
+IMPL_ISetCompressCodecsInfo
+
 namespace NLzmaAr {
 
-// 2, { 0x5D, 0x00 },
+IMP_CreateArcIn_2(CHandler(false))
 
-REGISTER_ARC_I_CLS_NO_SIG(
-  CHandler(false),
-  "lzma", "lzma", 0, 0xA,
+static CArcInfo g_ArcInfo =
+  { "lzma", "lzma", 0, 0xA,
+  0, { 0 },
+  // 2, { 0x5D, 0x00 },
   0,
   NArcInfoFlags::kStartOpen |
   NArcInfoFlags::kKeepName,
-  IsArc_Lzma)
- 
+  CreateArc, NULL,
+  IsArc_Lzma };
+
+REGISTER_ARC(Lzma)
+
 }
 
 namespace NLzma86Ar {
 
-REGISTER_ARC_I_CLS_NO_SIG(
-  CHandler(true),
-  "lzma86", "lzma86", 0, 0xB,
+IMP_CreateArcIn_2(CHandler(true))
+
+static CArcInfo g_ArcInfo =
+  { "lzma86", "lzma86", 0, 0xB,
+  0, { 0 },
   0,
   NArcInfoFlags::kKeepName,
-  IsArc_Lzma86)
- 
+  CreateArc, NULL,
+  IsArc_Lzma86 };
+
+REGISTER_ARC(Lzma86)
+
 }
 
 }}

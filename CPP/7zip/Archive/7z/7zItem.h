@@ -13,6 +13,8 @@
 namespace NArchive {
 namespace N7z {
 
+const UInt64 k_AES = 0x06F10701;
+
 typedef UInt32 CNum;
 const CNum kNumMax     = 0x7FFFFFFF;
 const CNum kNumNoIndex = 0xFFFFFFFF;
@@ -21,70 +23,71 @@ struct CCoderInfo
 {
   CMethodId MethodID;
   CByteBuffer Props;
-  UInt32 NumStreams;
+  CNum NumInStreams;
+  CNum NumOutStreams;
   
-  bool IsSimpleCoder() const { return NumStreams == 1; }
+  bool IsSimpleCoder() const { return (NumInStreams == 1) && (NumOutStreams == 1); }
 };
 
-struct CBond
+struct CBindPair
 {
-  UInt32 PackIndex;
-  UInt32 UnpackIndex;
+  CNum InIndex;
+  CNum OutIndex;
 };
 
 struct CFolder
 {
-  CLASS_NO_COPY(CFolder)
-public:
   CObjArray2<CCoderInfo> Coders;
-  CObjArray2<CBond> Bonds;
-  CObjArray2<UInt32> PackStreams;
+  CObjArray2<CBindPair> BindPairs;
+  CObjArray2<CNum> PackStreams;
 
-  CFolder() {}
+  CNum GetNumOutStreams() const
+  {
+    CNum result = 0;
+    FOR_VECTOR(i, Coders)
+      result += Coders[i].NumOutStreams;
+    return result;
+  }
 
-  bool IsDecodingSupported() const { return Coders.Size() <= 32; }
-
-  int Find_in_PackStreams(UInt32 packStream) const
+  int FindBindPairForInStream(CNum inStreamIndex) const
+  {
+    FOR_VECTOR(i, BindPairs)
+      if (BindPairs[i].InIndex == inStreamIndex)
+        return i;
+    return -1;
+  }
+  int FindBindPairForOutStream(CNum outStreamIndex) const
+  {
+    FOR_VECTOR(i, BindPairs)
+      if (BindPairs[i].OutIndex == outStreamIndex)
+        return i;
+    return -1;
+  }
+  int FindPackStreamArrayIndex(CNum inStreamIndex) const
   {
     FOR_VECTOR(i, PackStreams)
-      if (PackStreams[i] == packStream)
+      if (PackStreams[i] == inStreamIndex)
         return i;
     return -1;
   }
 
-  int FindBond_for_PackStream(UInt32 packStream) const
+  int GetIndexOfMainOutStream() const
   {
-    FOR_VECTOR(i, Bonds)
-      if (Bonds[i].PackIndex == packStream)
+    for (int i = (int)GetNumOutStreams() - 1; i >= 0; i--)
+      if (FindBindPairForOutStream(i) < 0)
         return i;
-    return -1;
+    throw 1;
   }
-  
-  /*
-  int FindBond_for_UnpackStream(UInt32 unpackStream) const
-  {
-    FOR_VECTOR(i, Bonds)
-      if (Bonds[i].UnpackIndex == unpackStream)
-        return i;
-    return -1;
-  }
-
-  int FindOutCoder() const
-  {
-    for (int i = (int)Coders.Size() - 1; i >= 0; i--)
-      if (FindBond_for_UnpackStream(i) < 0)
-        return i;
-    return -1;
-  }
-  */
 
   bool IsEncrypted() const
   {
-    FOR_VECTOR(i, Coders)
+    for (int i = Coders.Size() - 1; i >= 0; i--)
       if (Coders[i].MethodID == k_AES)
         return true;
     return false;
   }
+
+  bool CheckStructure(unsigned numUnpackSizes) const;
 };
 
 struct CUInt32DefVector

@@ -114,18 +114,13 @@ bool MySetWindowText(HWND wnd, LPCWSTR s)
 bool CWindow::GetText(CSysString &s)
 {
   s.Empty();
-  int len = GetTextLength();
-  if (len == 0)
+  int length = GetTextLength();
+  if (length == 0)
     return (::GetLastError() == ERROR_SUCCESS);
-  TCHAR *p = s.GetBuf(len);
-  {
-    int len2 = GetText(p, len + 1);
-    if (len > len2)
-      len = len2;
-  }
-  s.ReleaseBuf_CalcLen(len);
-  if (len == 0)
-    return (::GetLastError() == ERROR_SUCCESS);
+  length = GetText(s.GetBuffer(length), length + 1);
+  s.ReleaseBuffer();
+  if (length == 0)
+    return (::GetLastError() != ERROR_SUCCESS);
   return true;
 }
 
@@ -135,23 +130,18 @@ bool CWindow::GetText(UString &s)
   if (g_IsNT)
   {
     s.Empty();
-    int len = GetWindowTextLengthW(_window);
-    if (len == 0)
+    int length = GetWindowTextLengthW(_window);
+    if (length == 0)
       return (::GetLastError() == ERROR_SUCCESS);
-    wchar_t *p = s.GetBuf(len);
-    {
-      int len2 = GetWindowTextW(_window, p, len + 1);
-      if (len > len2)
-        len = len2;
-    }
-    s.ReleaseBuf_CalcLen(len);
-    if (len == 0)
+    length = GetWindowTextW(_window, s.GetBuffer(length), length + 1);
+    s.ReleaseBuffer();
+    if (length == 0)
       return (::GetLastError() == ERROR_SUCCESS);
     return true;
   }
   CSysString sysString;
   bool result = GetText(sysString);
-  MultiByteToUnicodeString2(s, sysString);
+  s = GetUnicodeString(sysString);
   return result;
 }
 #endif

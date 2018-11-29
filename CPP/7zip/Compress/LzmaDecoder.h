@@ -14,7 +14,6 @@ namespace NLzma {
 class CDecoder:
   public ICompressCoder,
   public ICompressSetDecoderProperties2,
-  public ICompressSetFinishMode,
   public ICompressSetBufSize,
   #ifndef NO_READ_FROM_CODER
   public ICompressSetInStream,
@@ -46,7 +45,6 @@ class CDecoder:
 public:
   MY_QUERYINTERFACE_BEGIN2(ICompressCoder)
   MY_QUERYINTERFACE_ENTRY(ICompressSetDecoderProperties2)
-  MY_QUERYINTERFACE_ENTRY(ICompressSetFinishMode)
   MY_QUERYINTERFACE_ENTRY(ICompressSetBufSize)
   #ifndef NO_READ_FROM_CODER
   MY_QUERYINTERFACE_ENTRY(ICompressSetInStream)
@@ -59,7 +57,6 @@ public:
   STDMETHOD(Code)(ISequentialInStream *inStream, ISequentialOutStream *outStream,
       const UInt64 *inSize, const UInt64 *outSize, ICompressProgressInfo *progress);
   STDMETHOD(SetDecoderProperties2)(const Byte *data, UInt32 size);
-  STDMETHOD(SetFinishMode)(UInt32 finishMode);
   STDMETHOD(SetOutStreamSize)(const UInt64 *outSize);
   STDMETHOD(SetInBufSize)(UInt32 streamIndex, UInt32 size);
   STDMETHOD(SetOutBufSize)(UInt32 streamIndex, UInt32 size);

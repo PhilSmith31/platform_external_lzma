@@ -26,6 +26,7 @@ WIN_OBJS = \
   $O\InBuffer.obj \
   $O\FilterCoder.obj \
   $O\LimitedStreams.obj \
+  $O\LockedStream.obj \
   $O\MethodId.obj \
   $O\MethodProps.obj \
   $O\OutBuffer.obj \
@@ -42,6 +43,8 @@ AR_OBJS = \
 
 AR_COMMON_OBJS = \
   $O\CoderMixer2.obj \
+  $O\CoderMixer2MT.obj \
+  $O\CrossThreadProgress.obj \
   $O\HandlerOut.obj \
   $O\ItemNameUtils.obj \
   $O\OutStreamWithCRC.obj \
@@ -52,6 +55,7 @@ AR_COMMON_OBJS = \
   $O\7zCompressionMode.obj \
   $O\7zDecode.obj \
   $O\7zExtract.obj \
+  $O\7zFolderOutStream.obj \
   $O\7zHandler.obj \
   $O\7zHeader.obj \
   $O\7zIn.obj \
@@ -65,6 +69,7 @@ COMPRESS_OBJS = \
   $O\Bcj2Register.obj \
   $O\BcjCoder.obj \
   $O\BcjRegister.obj \
+  $O\BranchCoder.obj \
   $O\BranchMisc.obj \
   $O\BranchRegister.obj \
   $O\ByteSwap.obj \
@@ -78,7 +83,6 @@ COMPRESS_OBJS = \
 
 C_OBJS = \
   $O\Alloc.obj \
-  $O\Bcj2.obj \
   $O\Bra.obj \
   $O\Bra86.obj \
   $O\BraIA64.obj \

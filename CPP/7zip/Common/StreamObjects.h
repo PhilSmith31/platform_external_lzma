@@ -9,21 +9,6 @@
 
 #include "../IStream.h"
 
-class CBufferInStream:
-  public IInStream,
-  public CMyUnknownImp
-{
-  UInt64 _pos;
-public:
-  CByteBuffer Buf;
-  void Init() { _pos = 0; }
- 
-  MY_UNKNOWN_IMP2(ISequentialInStream, IInStream)
-
-  STDMETHOD(Read)(void *data, UInt32 size, UInt32 *processedSize);
-  STDMETHOD(Seek)(Int64 offset, UInt32 seekOrigin, UInt64 *newPosition);
-};
-
 struct CReferenceBuf:
   public IUnknown,
   public CMyUnknownImp
@@ -55,10 +40,8 @@ public:
   STDMETHOD(Seek)(Int64 offset, UInt32 seekOrigin, UInt64 *newPosition);
 };
 
-void Create_BufInStream_WithReference(const void *data, size_t size, IUnknown *ref, ISequentialInStream **stream);
-void Create_BufInStream_WithNewBuffer(const void *data, size_t size, ISequentialInStream **stream);
-inline void Create_BufInStream_WithNewBuffer(const CByteBuffer &buf, ISequentialInStream **stream)
-  { Create_BufInStream_WithNewBuffer(buf, buf.Size(), stream); }
+// void Create_BufInStream_WithReference(const void *data, size_t size, ISequentialInStream **stream);
+void Create_BufInStream_WithNewBuf(const void *data, size_t size, ISequentialInStream **stream);
 
 class CByteDynBuffer
 {
@@ -70,8 +53,8 @@ public:
   ~CByteDynBuffer() { Free(); }
   void Free() throw();
   size_t GetCapacity() const { return _capacity; }
-  operator Byte*() const { return _buf; }
-  operator const Byte*() const { return _buf; }
+  operator Byte*() const { return _buf; };
+  operator const Byte*() const { return _buf; };
   bool EnsureCapacity(size_t capacity) throw();
 };
 

@@ -12,8 +12,7 @@ namespace NPathMode
     kFullPaths,
     kCurPaths,
     kNoPaths,
-    kAbsPaths,
-    kNoPathsAlt // alt streams must be extracted without name of base file
+    kAbsPaths
   };
 }
 

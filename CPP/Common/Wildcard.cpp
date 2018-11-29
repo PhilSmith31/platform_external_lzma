@@ -15,8 +15,22 @@ bool g_CaseSensitive =
 bool IsPath1PrefixedByPath2(const wchar_t *s1, const wchar_t *s2)
 {
   if (g_CaseSensitive)
-    return IsString1PrefixedByString2(s1, s2);
-  return IsString1PrefixedByString2_NoCase(s1, s2);
+  {
+    for (;;)
+    {
+      wchar_t c2 = *s2++; if (c2 == 0) return true;
+      wchar_t c1 = *s1++;
+      if (MyCharUpper(c1) !=
+          MyCharUpper(c2))
+        return false;
+    }
+  }
+
+  for (;;)
+  {
+    wchar_t c2 = *s2++; if (c2 == 0) return true;
+    wchar_t c1 = *s1++; if (c1 != c2) return false;
+  }
 }
 
 int CompareFileNames(const wchar_t *s1, const wchar_t *s2) STRING_UNICODE_THROW
@@ -83,7 +97,7 @@ void SplitPathToParts(const UString &path, UStringVector &pathParts)
   UString name;
   unsigned prev = 0;
   for (unsigned i = 0; i < len; i++)
-    if (IsPathSepar(path[i]))
+    if (IsCharDirLimiter(path[i]))
     {
       name.SetFrom(path.Ptr(prev), i - prev);
       pathParts.Add(name);
@@ -98,7 +112,7 @@ void SplitPathToParts_2(const UString &path, UString &dirPrefix, UString &name)
   const wchar_t *start = path;
   const wchar_t *p = start + path.Len();
   for (; p != start; p--)
-    if (IsPathSepar(*(p - 1)))
+    if (IsCharDirLimiter(*(p - 1)))
       break;
   dirPrefix.SetFrom(path, (unsigned)(p - start));
   name = p;
@@ -110,10 +124,10 @@ void SplitPathToParts_Smart(const UString &path, UString &dirPrefix, UString &na
   const wchar_t *p = start + path.Len();
   if (p != start)
   {
-    if (IsPathSepar(*(p - 1)))
+    if (IsCharDirLimiter(*(p - 1)))
       p--;
     for (; p != start; p--)
-      if (IsPathSepar(*(p - 1)))
+      if (IsCharDirLimiter(*(p - 1)))
         break;
   }
   dirPrefix.SetFrom(path, (unsigned)(p - start));
@@ -125,7 +139,7 @@ UString ExtractDirPrefixFromPath(const UString &path)
   const wchar_t *start = path;
   const wchar_t *p = start + path.Len();
   for (; p != start; p--)
-    if (IsPathSepar(*(p - 1)))
+    if (IsCharDirLimiter(*(p - 1)))
       break;
   return path.Left((unsigned)(p - start));
 }
@@ -135,7 +149,7 @@ UString ExtractFileNameFromPath(const UString &path)
   const wchar_t *start = path;
   const wchar_t *p = start + path.Len();
   for (; p != start; p--)
-    if (IsPathSepar(*(p - 1)))
+    if (IsCharDirLimiter(*(p - 1)))
       break;
   return p;
 }
@@ -163,6 +177,15 @@ bool DoesNameContainWildcard(const UString &path)
 
 namespace NWildcard {
 
+
+#ifdef _WIN32
+bool IsDriveColonName(const wchar_t *s)
+{
+  wchar_t c = s[0];
+  return c != 0 && s[1] == ':' && s[2] == 0 && (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z');
+}
+#endif
+
 /*
 
 M = MaskParts.Size();
@@ -189,19 +212,6 @@ bool CItem::CheckPath(const UStringVector &pathParts, bool isFile) const
 {
   if (!isFile && !ForDir)
     return false;
-
-  /*
-  if (PathParts.IsEmpty())
-  {
-    // PathParts.IsEmpty() means all items (universal wildcard)
-    if (!isFile)
-      return true;
-    if (pathParts.Size() <= 1)
-      return ForFile;
-    return (ForDir || Recursive && ForFile);
-  }
-  */
-
   int delta = (int)pathParts.Size() - (int)PathParts.Size();
   if (delta < 0)
     return false;
@@ -276,7 +286,7 @@ void CCensorNode::AddItemSimple(bool include, CItem &item)
     ExcludeItems.Add(item);
 }
 
-void CCensorNode::AddItem(bool include, CItem &item, int ignoreWildcardIndex)
+void CCensorNode::AddItem(bool include, CItem &item)
 {
   if (item.PathParts.Size() <= 1)
   {
@@ -290,10 +300,9 @@ void CCensorNode::AddItem(bool include, CItem &item, int ignoreWildcardIndex)
   }
   const UString &front = item.PathParts.Front();
   
-  // WIN32 doesn't support wildcards in file names
-  if (item.WildcardMatching
-      && ignoreWildcardIndex != 0
-      && DoesNameContainWildcard(front))
+  // We can't ignore wildcard, since we don't allow wildcard in SubNodes[].Name
+  // if (item.Wildcard)
+  if (DoesNameContainWildcard(front))
   {
     AddItemSimple(include, item);
     return;
@@ -302,7 +311,7 @@ void CCensorNode::AddItem(bool include, CItem &item, int ignoreWildcardIndex)
   if (index < 0)
     index = SubNodes.Add(CCensorNode(front, this));
   item.PathParts.Delete(0);
-  SubNodes[index].AddItem(include, item, ignoreWildcardIndex - 1);
+  SubNodes[index].AddItem(include, item);
 }
 
 void CCensorNode::AddItem(bool include, const UString &path, bool recursive, bool forFile, bool forDir, bool wildcardMatching)
@@ -368,7 +377,6 @@ bool CCensorNode::CheckPathVect(const UStringVector &pathParts, bool isFile, boo
   return finded;
 }
 
-/*
 bool CCensorNode::CheckPath2(bool isAltStream, const UString &path, bool isFile, bool &include) const
 {
   UStringVector pathParts;
@@ -398,7 +406,6 @@ bool CCensorNode::CheckPath(bool isAltStream, const UString &path, bool isFile) 
     return include;
   return false;
 }
-*/
 
 bool CCensorNode::CheckPathToRoot(bool include, UStringVector &pathParts, bool isFile) const
 {
@@ -426,7 +433,7 @@ void CCensorNode::AddItem2(bool include, const UString &path, bool recursive, bo
   bool forFile = true;
   bool forFolder = true;
   UString path2 = path;
-  if (IsPathSepar(path.Back()))
+  if (IsCharDirLimiter(path.Back()))
   {
     path2.DeleteBack();
     forFile = false;
@@ -455,90 +462,12 @@ int CCensor::FindPrefix(const UString &prefix) const
   return -1;
 }
 
-#ifdef _WIN32
-
-bool IsDriveColonName(const wchar_t *s)
-{
-  wchar_t c = s[0];
-  return c != 0 && s[1] == ':' && s[2] == 0 && (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z');
-}
-
-unsigned GetNumPrefixParts_if_DrivePath(UStringVector &pathParts)
-{
-  if (pathParts.IsEmpty())
-    return 0;
-  
-  unsigned testIndex = 0;
-  if (pathParts[0].IsEmpty())
-  {
-    if (pathParts.Size() < 4
-        || !pathParts[1].IsEmpty()
-        || pathParts[2] != L"?")
-      return 0;
-    testIndex = 3;
-  }
-  if (NWildcard::IsDriveColonName(pathParts[testIndex]))
-    return testIndex + 1;
-  return 0;
-}
-
-#endif
-
-static unsigned GetNumPrefixParts(const UStringVector &pathParts)
-{
-  if (pathParts.IsEmpty())
-    return 0;
-  
-  #ifdef _WIN32
-  
-  if (IsDriveColonName(pathParts[0]))
-    return 1;
-  if (!pathParts[0].IsEmpty())
-    return 0;
-
-  if (pathParts.Size() == 1)
-    return 1;
-  if (!pathParts[1].IsEmpty())
-    return 1;
-  if (pathParts.Size() == 2)
-    return 2;
-  if (pathParts[2] == L".")
-    return 3;
-
-  unsigned networkParts = 2;
-  if (pathParts[2] == L"?")
-  {
-    if (pathParts.Size() == 3)
-      return 3;
-    if (IsDriveColonName(pathParts[3]))
-      return 4;
-    if (!pathParts[3].IsEqualTo_Ascii_NoCase("UNC"))
-      return 3;
-    networkParts = 4;
-  }
-
-  networkParts +=
-      // 2; // server/share
-      1; // server
-  if (pathParts.Size() <= networkParts)
-    return pathParts.Size();
-  return networkParts;
-
-  #else
-  
-  return pathParts[0].IsEmpty() ? 1 : 0;
- 
-  #endif
-}
-
 void CCensor::AddItem(ECensorPathMode pathMode, bool include, const UString &path, bool recursive, bool wildcardMatching)
 {
+  UStringVector pathParts;
   if (path.IsEmpty())
     throw "Empty file path";
-
-  UStringVector pathParts;
   SplitPathToParts(path, pathParts);
-
   bool forFile = true;
   if (pathParts.Back().IsEmpty())
   {
@@ -548,55 +477,74 @@ void CCensor::AddItem(ECensorPathMode pathMode, bool include, const UString &pat
   
   UString prefix;
   
-  int ignoreWildcardIndex = -1;
-
-  // #ifdef _WIN32
-  // we ignore "?" wildcard in "\\?\" prefix.
-  if (pathParts.Size() >= 3
-      && pathParts[0].IsEmpty()
-      && pathParts[1].IsEmpty()
-      && pathParts[2] == L"?")
-    ignoreWildcardIndex = 2;
-  // #endif
-
   if (pathMode != k_AbsPath)
   {
-    ignoreWildcardIndex = -1;
-
-    const unsigned numPrefixParts = GetNumPrefixParts(pathParts);
-    unsigned numSkipParts = numPrefixParts;
-
-    if (pathMode != k_FullPath)
+    const UString &front = pathParts.Front();
+    bool isAbs = false;
+    
+    if (front.IsEmpty())
+      isAbs = true;
+    else
     {
-      if (numPrefixParts != 0 && pathParts.Size() > numPrefixParts)
-        numSkipParts = pathParts.Size() - 1;
+      #ifdef _WIN32
+      
+      if (IsDriveColonName(front))
+        isAbs = true;
+      else
+      
+      #endif
+      
+        FOR_VECTOR (i, pathParts)
+        {
+          const UString &part = pathParts[i];
+          if (part == L".." || part == L".")
+          {
+            isAbs = true;
+            break;
+          }
+        }
     }
+    
+    unsigned numAbsParts = 0;
+    if (isAbs)
+      if (pathParts.Size() > 1)
+        numAbsParts = pathParts.Size() - 1;
+      else
+        numAbsParts = 1;
+      
+    #ifdef _WIN32
+    
+    // \\?\ case
+    if (numAbsParts >= 3)
     {
-      int dotsIndex = -1;
-      for (unsigned i = numPrefixParts; i < pathParts.Size(); i++)
+      if (pathParts[0].IsEmpty() &&
+          pathParts[1].IsEmpty() &&
+          pathParts[2] == L"?")
       {
-        const UString &part = pathParts[i];
-        if (part == L".." || part == L".")
-          dotsIndex = i;
+        prefix =
+            WSTRING_PATH_SEPARATOR
+            WSTRING_PATH_SEPARATOR L"?"
+            WSTRING_PATH_SEPARATOR;
+        numAbsParts -= 3;
+        pathParts.DeleteFrontal(3);
       }
-
-      if (dotsIndex >= 0)
-        if (dotsIndex == (int)pathParts.Size() - 1)
-          numSkipParts = pathParts.Size();
-        else
-          numSkipParts = pathParts.Size() - 1;
     }
+    
+    #endif
+    
+    if (numAbsParts > 1 && pathMode == k_FullPath)
+      numAbsParts = 1;
 
-    for (unsigned i = 0; i < numSkipParts; i++)
+    // We can't ignore wildcard, since we don't allow wildcard in SubNodes[].Name
+    // if (wildcardMatching)
+    for (unsigned i = 0; i < numAbsParts; i++)
     {
       {
         const UString &front = pathParts.Front();
-        // WIN32 doesn't support wildcards in file names
-        if (wildcardMatching)
-          if (i >= numPrefixParts && DoesNameContainWildcard(front))
-            break;
+        if (DoesNameContainWildcard(front))
+          break;
         prefix += front;
-        prefix.Add_PathSepar();
+        prefix += WCHAR_PATH_SEPARATOR;
       }
       pathParts.Delete(0);
     }
@@ -606,29 +554,15 @@ void CCensor::AddItem(ECensorPathMode pathMode, bool include, const UString &pat
   if (index < 0)
     index = Pairs.Add(CPair(prefix));
 
-  if (pathMode != k_AbsPath)
-  {
-    if (pathParts.IsEmpty() || pathParts.Size() == 1 && pathParts[0].IsEmpty())
-    {
-      // we create universal item, if we skip all parts as prefix (like \ or L:\ )
-      pathParts.Clear();
-      pathParts.Add(L"*");
-      forFile = true;
-      wildcardMatching = true;
-      recursive = false;
-    }
-  }
-
   CItem item;
   item.PathParts = pathParts;
   item.ForDir = true;
   item.ForFile = forFile;
   item.Recursive = recursive;
   item.WildcardMatching = wildcardMatching;
-  Pairs[index].Head.AddItem(include, item, ignoreWildcardIndex);
+  Pairs[index].Head.AddItem(include, item);
 }
 
-/*
 bool CCensor::CheckPath(bool isAltStream, const UString &path, bool isFile) const
 {
   bool finded = false;
@@ -644,7 +578,6 @@ bool CCensor::CheckPath(bool isAltStream, const UString &path, bool isFile) cons
   }
   return finded;
 }
-*/
 
 void CCensor::ExtendExclude()
 {

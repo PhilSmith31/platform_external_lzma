@@ -36,14 +36,10 @@ CHandler::CHandler()
   #endif
 
   #ifdef EXTRACT_ONLY
-  
   _crcSize = 4;
-  
   #ifdef __7Z_SET_PROPERTIES
   _numThreads = NSystem::GetNumberOfProcessors();
-  _useMultiThreadMixer = true;
   #endif
-  
   #endif
 }
 
@@ -154,12 +150,22 @@ static char *AddProp32(char *s, const char *name, UInt32 v)
  
 void CHandler::AddMethodName(AString &s, UInt64 id)
 {
-  AString name;
-  FindMethod(EXTERNAL_CODECS_VARS id, name);
-  if (name.IsEmpty())
+  UString methodName;
+  FindMethod(EXTERNAL_CODECS_VARS id, methodName);
+  if (methodName.IsEmpty())
+  {
+    for (unsigned i = 0; i < methodName.Len(); i++)
+      if (methodName[i] >= 0x80)
+      {
+        methodName.Empty();
+        break;
+      }
+  }
+  if (methodName.IsEmpty())
     ConvertMethodIdToString(s, id);
   else
-    s += name;
+    for (unsigned i = 0; i < methodName.Len(); i++)
+      s += (char)methodName[i];
 }
 
 #endif
@@ -180,7 +186,8 @@ STDMETHODIMP CHandler::GetArchiveProperty(PROPID propID, PROPVARIANT *value)
       FOR_VECTOR (i, pm.IDs)
       {
         UInt64 id = pm.IDs[i];
-        s.Add_Space_if_NotEmpty();
+        if (!s.IsEmpty())
+          s += ' ';
         char temp[16];
         if (id == k_LZMA2)
         {
@@ -369,7 +376,6 @@ HRESULT CHandler::SetMethodToProp(CNum folderIndex, PROPVARIANT *prop) const
   // numCoders == 0 ???
   CNum numCoders = inByte.ReadNum();
   bool needSpace = false;
-  
   for (; numCoders != 0; numCoders--, needSpace = true)
   {
     if (pos < 32) // max size of property
@@ -429,11 +435,11 @@ HRESULT CHandler::SetMethodToProp(CNum folderIndex, PROPVARIANT *prop) const
         name = "LZMA2";
         if (propsSize == 1)
         {
-          Byte d = props[0];
-          if ((d & 1) == 0)
-            ConvertUInt32ToString((UInt32)((d >> 1) + 12), s);
+          Byte p = props[0];
+          if ((p & 1) == 0)
+            ConvertUInt32ToString((UInt32)((p >> 1) + 12), s);
           else
-            GetStringForSizeValue(s, 3 << ((d >> 1) + 11));
+            GetStringForSizeValue(s, 3 << ((p >> 1) + 11));
         }
       }
       else if (id == k_PPMD)
@@ -494,8 +500,17 @@ HRESULT CHandler::SetMethodToProp(CNum folderIndex, PROPVARIANT *prop) const
     }
     else
     {
-      AString methodName;
+      UString methodName;
       FindMethod(EXTERNAL_CODECS_VARS id64, methodName);
+      if (methodName.IsEmpty())
+      {
+        for (unsigned j = 0; j < methodName.Len(); j++)
+          if (methodName[j] >= 0x80)
+          {
+            methodName.Empty();
+            break;
+          }
+      }
       if (needSpace)
         temp[--pos] = ' ';
       if (methodName.IsEmpty())
@@ -507,11 +522,10 @@ HRESULT CHandler::SetMethodToProp(CNum folderIndex, PROPVARIANT *prop) const
           break;
         pos -= len;
         for (unsigned i = 0; i < len; i++)
-          temp[pos + i] = methodName[i];
+          temp[pos + i] = (char)methodName[i];
       }
     }
   }
-  
   if (numCoders != 0 && pos >= 4)
   {
     temp[--pos] = ' ';
@@ -519,7 +533,6 @@ HRESULT CHandler::SetMethodToProp(CNum folderIndex, PROPVARIANT *prop) const
     temp[--pos] = '.';
     temp[--pos] = '.';
   }
-  
   return PropVarEm_Set_Str(prop, temp + pos);
   // }
 }
@@ -542,7 +555,7 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
   const CFileItem &item = _db.Files[index];
   UInt32 index2 = index;
 
-  switch (propID)
+  switch(propID)
   {
     case kpidIsDir: PropVarEm_Set_Bool(value, item.IsDir); break;
     case kpidSize:
@@ -595,9 +608,7 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
     */
 
     case kpidPath: return _db.GetPath_Prop(index, value);
-    
     #ifndef _SFX
-    
     case kpidMethod: return SetMethodToProp(_db.FileIndexToFolderIndexMap[index2], value);
     case kpidBlock:
       {
@@ -606,29 +617,30 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
           PropVarEm_Set_UInt32(value, (UInt32)folderIndex);
       }
       break;
-    /*
     case kpidPackedSize0:
     case kpidPackedSize1:
     case kpidPackedSize2:
     case kpidPackedSize3:
     case kpidPackedSize4:
       {
+        /*
         CNum folderIndex = _db.FileIndexToFolderIndexMap[index2];
         if (folderIndex != kNumNoIndex)
         {
+          const CFolder &folderInfo = _db.Folders[folderIndex];
           if (_db.FolderStartFileIndex[folderIndex] == (CNum)index2 &&
-              _db.FoStartPackStreamIndex[folderIndex + 1] -
-              _db.FoStartPackStreamIndex[folderIndex] > (propID - kpidPackedSize0))
+              folderInfo.PackStreams.Size() > (int)(propID - kpidPackedSize0))
           {
-            PropVarEm_Set_UInt64(value, _db.GetFolderPackStreamSize(folderIndex, propID - kpidPackedSize0));
+            prop = _db.GetFolderPackStreamSize(folderIndex, propID - kpidPackedSize0);
           }
+          else
+            prop = (UInt64)0;
         }
         else
-          PropVarEm_Set_UInt64(value, 0);
+          prop = (UInt64)0;
+        */
       }
       break;
-    */
-    
     #endif
   }
   // prop.Detach(value);
@@ -656,13 +668,7 @@ STDMETHODIMP CHandler::Open(IInStream *stream,
       openArchiveCallbackTemp.QueryInterface(IID_ICryptoGetTextPassword, &getTextPassword);
     #endif
 
-    CInArchive archive(
-          #ifdef __7Z_SET_PROPERTIES
-          _useMultiThreadMixer
-          #else
-          true
-          #endif
-          );
+    CInArchive archive;
     _db.IsArc = false;
     RINOK(archive.Open(stream, maxCheckStartPosition));
     _db.IsArc = true;
@@ -671,7 +677,7 @@ STDMETHODIMP CHandler::Open(IInStream *stream,
         EXTERNAL_CODECS_VARS
         _db
         #ifndef _NO_CRYPTO
-          , getTextPassword, _isEncrypted, _passwordIsDefined, _password
+          , getTextPassword, _isEncrypted, _passwordIsDefined
         #endif
         );
     RINOK(result);
@@ -682,9 +688,8 @@ STDMETHODIMP CHandler::Open(IInStream *stream,
   {
     Close();
     // return E_INVALIDARG;
-    // return S_FALSE;
     // we must return out_of_memory here
-    return E_OUTOFMEMORY;
+    return S_FALSE;
   }
   // _inStream = stream;
   #ifndef _SFX
@@ -702,7 +707,6 @@ STDMETHODIMP CHandler::Close()
   #ifndef _NO_CRYPTO
   _isEncrypted = false;
   _passwordIsDefined = false;
-  _password.Empty();
   #endif
   return S_OK;
   COM_TRY_END
@@ -711,12 +715,11 @@ STDMETHODIMP CHandler::Close()
 #ifdef __7Z_SET_PROPERTIES
 #ifdef EXTRACT_ONLY
 
-STDMETHODIMP CHandler::SetProperties(const wchar_t * const *names, const PROPVARIANT *values, UInt32 numProps)
+STDMETHODIMP CHandler::SetProperties(const wchar_t **names, const PROPVARIANT *values, UInt32 numProps)
 {
   COM_TRY_BEGIN
   const UInt32 numProcessors = NSystem::GetNumberOfProcessors();
   _numThreads = numProcessors;
-  _useMultiThreadMixer = true;
 
   for (UInt32 i = 0; i < numProps; i++)
   {
@@ -726,15 +729,10 @@ STDMETHODIMP CHandler::SetProperties(const wchar_t * const *names, const PROPVAR
       return E_INVALIDARG;
     const PROPVARIANT &value = values[i];
     UInt32 number;
-    unsigned index = ParseStringToUInt32(name, number);
+    int index = ParseStringToUInt32(name, number);
     if (index == 0)
     {
-      if (name.IsEqualTo("mtf"))
-      {
-        RINOK(PROPVARIANT_to_bool(value, _useMultiThreadMixer));
-        continue;
-      }
-      if (name.IsPrefixedBy_Ascii_NoCase("mt"))
+      if (name.IsPrefixedBy(L"mt"))
       {
         RINOK(ParseMtProp(name.Ptr(2), value, numProcessors, _numThreads));
         continue;

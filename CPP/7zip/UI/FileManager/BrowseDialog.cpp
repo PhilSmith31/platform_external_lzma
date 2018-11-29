@@ -2,10 +2,6 @@
  
 #include "StdAfx.h"
 
-#include "../../../Common/MyWindows.h"
-
-#include <commctrl.h>
-
 #ifndef UNDER_CE
 #include "../../../Windows/CommonDialog.h"
 #include "../../../Windows/Shell.h"
@@ -81,7 +77,7 @@ static void MessageBox_HResError(HWND wnd, HRESULT errorCode, const wchar_t *nam
   UString s = HResultToMessage(errorCode);
   if (name)
   {
-    s.Add_LF();
+    s += L'\n';
     s += name;
   }
   MessageBox_Error_Global(wnd, s);
@@ -110,7 +106,7 @@ class CBrowseDialog: public NControl::CModalDialog
   virtual bool OnButtonClicked(int buttonID, HWND buttonHWND);
   virtual void OnOK();
 
-  void Post_RefreshPathEdit() { PostMsg(k_Message_RefreshPathEdit); }
+  void Post_RefreshPathEdit() { PostMessage(k_Message_RefreshPathEdit); }
 
   bool GetParentPath(const UString &path, UString &parentPrefix, UString &name);
   // Reload changes DirPrefix. Don't send DirPrefix in pathPrefix parameter
@@ -197,11 +193,9 @@ bool CBrowseDialog::OnInit()
   #endif
 
   #ifndef _SFX
-  CFmSettings st;
-  st.Load();
-  if (st.SingleClick)
+  if (ReadSingleClick())
     _list.SetExtendedListViewStyle(LVS_EX_ONECLICKACTIVATE | LVS_EX_TRACKSELECT);
-  _showDots = st.ShowDots;
+  _showDots = ReadShowDots();
   #endif
 
   {
@@ -215,7 +209,7 @@ bool CBrowseDialog::OnInit()
       FOR_VECTOR (i, Filters)
       {
         if (i != 0)
-          s.Add_Space();
+          s += L' ';
         s += Filters[i];
       }
     }
@@ -262,16 +256,14 @@ bool CBrowseDialog::OnInit()
   _topDirPrefix.Empty();
   {
     int rootSize = GetRootPrefixSize(FilePath);
-    #if defined(_WIN32) && !defined(UNDER_CE)
     // We can go up from root folder to drives list
-    if (IsDrivePath(FilePath))
+    if (NName::IsDrivePath(FilePath))
       rootSize = 0;
     else if (IsSuperPath(FilePath))
     {
-      if (IsDrivePath(FilePath.Ptr(kSuperPathPrefixSize)))
+      if (NName::IsDrivePath(&FilePath[kSuperPathPrefixSize]))
         rootSize = kSuperPathPrefixSize;
     }
-    #endif
     _topDirPrefix.SetFrom(FilePath, rootSize);
   }
 
@@ -279,7 +271,7 @@ bool CBrowseDialog::OnInit()
   if (!GetParentPath(FilePath, DirPrefix, name))
     DirPrefix = _topDirPrefix;
 
-  for (;;)
+  for(;;)
   {
     UString baseFolder = DirPrefix;
     if (Reload(baseFolder, name) == S_OK)
@@ -301,7 +293,7 @@ bool CBrowseDialog::OnInit()
   #ifndef UNDER_CE
   /* If we clear UISF_HIDEFOCUS, the focus rectangle in ListView will be visible,
      even if we use mouse for pressing the button to open this dialog. */
-  PostMsg(MY__WM_UPDATEUISTATE, MAKEWPARAM(MY__UIS_CLEAR, MY__UISF_HIDEFOCUS));
+  PostMessage(MY__WM_UPDATEUISTATE, MAKEWPARAM(MY__UIS_CLEAR, MY__UISF_HIDEFOCUS));
   #endif
 
   return CModalDialog::OnInit();
@@ -474,7 +466,7 @@ bool CBrowseDialog::GetParentPath(const UString &path, UString &parentPrefix, US
     return false;
   if (s.Back() == WCHAR_PATH_SEPARATOR)
     return false;
-  int pos = s.ReverseFind_PathSepar();
+  int pos = s.ReverseFind(WCHAR_PATH_SEPARATOR);
   parentPrefix.SetFrom(s, pos + 1);
   name = s.Ptr(pos + 1);
   return true;
@@ -864,7 +856,7 @@ bool MyBrowseForFile(HWND owner, LPCWSTR title, LPCWSTR path,
       return false;
     {
       UString s = errorMessage;
-      s.Add_LF();
+      s += L"\n";
       s += path;
       MessageBox_Error_Global(owner, s);
     }
@@ -912,32 +904,27 @@ bool CorrectFsPath(const UString &relBase, const UString &path2, UString &result
   result.Empty();
 
   UString path = path2;
-  path.Replace(L'/', WCHAR_PATH_SEPARATOR);
+  path.Replace('/', WCHAR_PATH_SEPARATOR);
   unsigned start = 0;
   UString base;
-  
-  if (IsAbsolutePath(path))
+  if (NName::IsAbsolutePath(path))
   {
-    #if defined(_WIN32) && !defined(UNDER_CE)
     if (IsSuperOrDevicePath(path))
     {
       result = path;
       return true;
     }
-    #endif
     int pos = GetRootPrefixSize(path);
     if (pos > 0)
       start = pos;
   }
   else
   {
-    #if defined(_WIN32) && !defined(UNDER_CE)
     if (IsSuperOrDevicePath(relBase))
     {
       result = path;
       return true;
     }
-    #endif
     base = relBase;
   }
 
@@ -967,7 +954,6 @@ bool CorrectFsPath(const UString &relBase, const UString &path2, UString &result
   result += path.Left(start);
   bool checkExist = true;
   UString cur;
-
   for (;;)
   {
     if (start == path.Len())
@@ -993,7 +979,7 @@ bool CorrectFsPath(const UString &relBase, const UString &path2, UString &result
     result += cur;
     if (slashPos < 0)
       break;
-    result.Add_PathSepar();
+    result += WCHAR_PATH_SEPARATOR;
     start = slashPos + 1;
   }
   
@@ -1001,13 +987,11 @@ bool CorrectFsPath(const UString &relBase, const UString &path2, UString &result
 }
 
 #else
-
 bool CorrectFsPath(const UString & /* relBase */, const UString &path, UString &result)
 {
   result = path;
   return true;
 }
-
 #endif
 
 bool Dlg_CreateFolder(HWND wnd, UString &destName)

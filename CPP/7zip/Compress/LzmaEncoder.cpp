@@ -12,21 +12,29 @@
 namespace NCompress {
 namespace NLzma {
 
+static void *SzBigAlloc(void *, size_t size) { return BigAlloc(size); }
+static void SzBigFree(void *, void *address) { BigFree(address); }
+static ISzAlloc g_BigAlloc = { SzBigAlloc, SzBigFree };
+
+static void *SzAlloc(void *, size_t size) { return MyAlloc(size); }
+static void SzFree(void *, void *address) { MyFree(address); }
+static ISzAlloc g_Alloc = { SzAlloc, SzFree };
+
 CEncoder::CEncoder()
 {
-  _encoder = NULL;
+  _encoder = 0;
   _encoder = LzmaEnc_Create(&g_Alloc);
-  if (!_encoder)
+  if (_encoder == 0)
     throw 1;
 }
 
 CEncoder::~CEncoder()
 {
-  if (_encoder)
+  if (_encoder != 0)
     LzmaEnc_Destroy(_encoder, &g_Alloc, &g_BigAlloc);
 }
 
-static inline wchar_t GetUpperChar(wchar_t c)
+inline wchar_t GetUpperChar(wchar_t c)
 {
   if (c >= 'a' && c <= 'z')
     c -= 0x20;
@@ -43,21 +51,22 @@ static int ParseMatchFinder(const wchar_t *s, int *btMode, int *numHashBytes)
     int numHashBytesLoc = (int)(*s++ - L'0');
     if (numHashBytesLoc < 4 || numHashBytesLoc > 4)
       return 0;
-    if (*s != 0)
+    if (*s++ != 0)
       return 0;
     *btMode = 0;
     *numHashBytes = numHashBytesLoc;
     return 1;
   }
-
   if (c != L'B')
     return 0;
+
   if (GetUpperChar(*s++) != L'T')
     return 0;
   int numHashBytesLoc = (int)(*s++ - L'0');
   if (numHashBytesLoc < 2 || numHashBytesLoc > 4)
     return 0;
-  if (*s != 0)
+  c = GetUpperChar(*s++);
+  if (c != L'\0')
     return 0;
   *btMode = 1;
   *numHashBytes = numHashBytesLoc;

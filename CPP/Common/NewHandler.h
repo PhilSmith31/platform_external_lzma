@@ -21,7 +21,6 @@ problem for your code.
 Also we declare delete(void *p) throw() that creates smaller code.
 */
 
-#include <stddef.h>
 
 class CNewException {};
 

@@ -30,17 +30,23 @@ public:
   ~CHashMidBuf() { ::MidFree(_data); }
 };
 
-static const char *k_DefaultHashMethod = "CRC32";
+struct CEnumDirItemCallback_Hash: public IEnumDirItemCallback
+{
+  IHashCallbackUI *Callback;
+  
+  HRESULT ScanProgress(UInt64 numFolders, UInt64 numFiles, UInt64 totalSize, const wchar_t *path, bool isDir)
+  {
+    return Callback->ScanProgress(numFolders, numFiles, totalSize, path, isDir);
+  }
+};
+
+static const wchar_t *k_DefaultHashMethod = L"CRC32";
 
 HRESULT CHashBundle::SetMethods(DECL_EXTERNAL_CODECS_LOC_VARS const UStringVector &hashMethods)
 {
   UStringVector names = hashMethods;
   if (names.IsEmpty())
-  {
-    UString s;
-    s.SetFromAscii(k_DefaultHashMethod);
-    names.Add(s);
-  }
+    names.Add(k_DefaultHashMethod);
 
   CRecordVector<CMethodId> ids;
   CObjectVector<COneMethodInfo> methods;
@@ -54,7 +60,7 @@ HRESULT CHashBundle::SetMethods(DECL_EXTERNAL_CODECS_LOC_VARS const UStringVecto
     if (m.MethodName.IsEmpty())
       m.MethodName = k_DefaultHashMethod;
     
-    if (m.MethodName == "*")
+    if (m.MethodName == L"*")
     {
       CRecordVector<CMethodId> tempMethods;
       GetHashMethods(EXTERNAL_CODECS_LOC_VARS tempMethods);
@@ -62,7 +68,7 @@ HRESULT CHashBundle::SetMethods(DECL_EXTERNAL_CODECS_LOC_VARS const UStringVecto
       ids.Clear();
       FOR_VECTOR (t, tempMethods)
       {
-        unsigned index = ids.AddToUniqueSorted(tempMethods[t]);
+        int index = ids.AddToUniqueSorted(tempMethods[t]);
         if (ids.Size() != methods.Size())
           methods.Insert(index, m);
       }
@@ -74,7 +80,7 @@ HRESULT CHashBundle::SetMethods(DECL_EXTERNAL_CODECS_LOC_VARS const UStringVecto
       CMethodId id;
       if (!FindHashMethod(EXTERNAL_CODECS_LOC_VARS m.MethodName, id))
         return E_NOTIMPL;
-      unsigned index = ids.AddToUniqueSorted(id);
+      int index = ids.AddToUniqueSorted(id);
       if (ids.Size() != methods.Size())
         methods.Insert(index, m);
     }
@@ -83,7 +89,7 @@ HRESULT CHashBundle::SetMethods(DECL_EXTERNAL_CODECS_LOC_VARS const UStringVecto
   for (i = 0; i < ids.Size(); i++)
   {
     CMyComPtr<IHasher> hasher;
-    AString name;
+    UString name;
     RINOK(CreateHasher(EXTERNAL_CODECS_LOC_VARS ids[i], name, hasher));
     if (!hasher)
       throw "Can't create hasher";
@@ -92,7 +98,9 @@ HRESULT CHashBundle::SetMethods(DECL_EXTERNAL_CODECS_LOC_VARS const UStringVecto
       CMyComPtr<ICompressSetCoderProperties> scp;
       hasher.QueryInterface(IID_ICompressSetCoderProperties, &scp);
       if (scp)
+      {
         RINOK(m.SetCoderProps(scp, NULL));
+      }
     }
     UInt32 digestSize = hasher->GetDigestSize();
     if (digestSize > k_HashCalc_DigestSize_Max)
@@ -101,10 +109,9 @@ HRESULT CHashBundle::SetMethods(DECL_EXTERNAL_CODECS_LOC_VARS const UStringVecto
     h.Hasher = hasher;
     h.Name = name;
     h.DigestSize = digestSize;
-    for (unsigned k = 0; k < k_HashCalc_NumGroups; k++)
-      memset(h.Digests[k], 0, digestSize);
+    for (int i = 0; i < k_HashCalc_NumGroups; i++)
+      memset(h.Digests[i], 0, digestSize);
   }
-
   return S_OK;
 }
 
@@ -196,12 +203,13 @@ HRESULT HashCalc(
     DECL_EXTERNAL_CODECS_LOC_VARS
     const NWildcard::CCensor &censor,
     const CHashOptions &options,
-    AString &errorInfo,
+    UString &errorInfo,
     IHashCallbackUI *callback)
 {
   CDirItems dirItems;
-  dirItems.Callback = callback;
 
+  UInt64 numErrors = 0;
+  UInt64 totalBytes = 0;
   if (options.StdInMode)
   {
     CDirItem di;
@@ -214,29 +222,34 @@ HRESULT HashCalc(
   }
   else
   {
+    CEnumDirItemCallback_Hash enumCallback;
+    enumCallback.Callback = callback;
     RINOK(callback->StartScanning());
     dirItems.ScanAltStreams = options.AltStreamsMode;
-
     HRESULT res = EnumerateItems(censor,
         options.PathMode,
         UString(),
-        dirItems);
-    
+        dirItems, &enumCallback);
+    totalBytes = dirItems.TotalSize;
+    FOR_VECTOR (i, dirItems.ErrorPaths)
+    {
+      RINOK(callback->CanNotFindError(fs2us(dirItems.ErrorPaths[i]), dirItems.ErrorCodes[i]));
+    }
+    numErrors = dirItems.ErrorPaths.Size();
     if (res != S_OK)
     {
       if (res != E_ABORT)
-        errorInfo = "Scanning error";
+        errorInfo = L"Scanning error";
       return res;
     }
-    RINOK(callback->FinishScanning(dirItems.Stat));
+    RINOK(callback->FinishScanning());
   }
 
   unsigned i;
   CHashBundle hb;
   RINOK(hb.SetMethods(EXTERNAL_CODECS_LOC_VARS options.Methods));
   hb.Init();
-
-  hb.NumErrors = dirItems.Stat.NumErrors;
+  hb.NumErrors = numErrors;
   
   if (options.StdInMode)
   {
@@ -244,7 +257,7 @@ HRESULT HashCalc(
   }
   else
   {
-    RINOK(callback->SetTotal(dirItems.Stat.GetTotalBytes()));
+    RINOK(callback->SetTotal(totalBytes));
   }
 
   const UInt32 kBufSize = 1 << 15;
@@ -276,8 +289,8 @@ HRESULT HashCalc(
       path = dirItems.GetLogPath(i);
       if (!isDir)
       {
-        FString phyPath = dirItems.GetPhyPath(i);
-        if (!inStreamSpec->OpenShared(phyPath, options.OpenShareForWrite))
+        UString phyPath = dirItems.GetPhyPath(i);
+        if (!inStreamSpec->OpenShared(us2fs(phyPath), options.OpenShareForWrite))
         {
           HRESULT res = callback->OpenFileError(phyPath, ::GetLastError());
           hb.NumErrors++;
@@ -314,15 +327,14 @@ HRESULT HashCalc(
 }
 
 
-static inline char GetHex(unsigned v)
+static inline char GetHex(Byte value)
 {
-  return (char)((v < 10) ? ('0' + v) : ('A' + (v - 10)));
+  return (char)((value < 10) ? ('0' + value) : ('A' + (value - 10)));
 }
 
 void AddHashHexToString(char *dest, const Byte *data, UInt32 size)
 {
   dest[size * 2] = 0;
-  
   if (!data)
   {
     for (UInt32 i = 0; i < size; i++)
@@ -333,19 +345,17 @@ void AddHashHexToString(char *dest, const Byte *data, UInt32 size)
     }
     return;
   }
-  
   int step = 2;
   if (size <= 8)
   {
     step = -2;
     dest += size * 2 - 2;
   }
-  
   for (UInt32 i = 0; i < size; i++)
   {
-    unsigned b = data[i];
-    dest[0] = GetHex((b >> 4) & 0xF);
-    dest[1] = GetHex(b & 0xF);
+    Byte b = data[i];
+    dest[0] = GetHex((Byte)((b >> 4) & 0xF));
+    dest[1] = GetHex((Byte)(b & 0xF));
     dest += step;
   }
 }

@@ -8,7 +8,6 @@
 #include "../../Common/CreateCoder.h"
 #include "../../Common/MethodProps.h"
 
-#include "DirItem.h"
 #include "Property.h"
 
 const unsigned k_HashCalc_DigestSize_Max = 64;
@@ -26,7 +25,7 @@ enum
 struct CHasherState
 {
   CMyComPtr<IHasher> Hasher;
-  AString Name;
+  UString Name;
   UInt32 DigestSize;
   Byte Digests[k_HashCalc_NumGroups][k_HashCalc_DigestSize_Max];
 };
@@ -43,8 +42,8 @@ struct CHashBundle: public IHashCalc
 {
   CObjectVector<CHasherState> Hashers;
 
-  UInt64 NumDirs;
   UInt64 NumFiles;
+  UInt64 NumDirs;
   UInt64 NumAltStreams;
   UInt64 FilesSize;
   UInt64 AltStreamsSize;
@@ -56,7 +55,7 @@ struct CHashBundle: public IHashCalc
   
   void Init()
   {
-    NumDirs = NumFiles = NumAltStreams = FilesSize = AltStreamsSize = NumErrors = 0;
+    NumFiles = NumDirs = NumAltStreams = FilesSize = AltStreamsSize = NumErrors = 0;
   }
 
   void InitForNewFile();
@@ -66,20 +65,21 @@ struct CHashBundle: public IHashCalc
 };
 
 #define INTERFACE_IHashCallbackUI(x) \
-  INTERFACE_IDirItemsCallback(x) \
   virtual HRESULT StartScanning() x; \
-  virtual HRESULT FinishScanning(const CDirItemsStat &st) x; \
+  virtual HRESULT ScanProgress(UInt64 numFolders, UInt64 numFiles, UInt64 totalSize, const wchar_t *path, bool isDir) x; \
+  virtual HRESULT CanNotFindError(const wchar_t *name, DWORD systemError) x; \
+  virtual HRESULT FinishScanning() x; \
   virtual HRESULT SetNumFiles(UInt64 numFiles) x; \
   virtual HRESULT SetTotal(UInt64 size) x; \
   virtual HRESULT SetCompleted(const UInt64 *completeValue) x; \
   virtual HRESULT CheckBreak() x; \
   virtual HRESULT BeforeFirstFile(const CHashBundle &hb) x; \
   virtual HRESULT GetStream(const wchar_t *name, bool isFolder) x; \
-  virtual HRESULT OpenFileError(const FString &path, DWORD systemError) x; \
+  virtual HRESULT OpenFileError(const wchar_t *name, DWORD systemError) x; \
   virtual HRESULT SetOperationResult(UInt64 fileSize, const CHashBundle &hb, bool showHash) x; \
   virtual HRESULT AfterLastFile(const CHashBundle &hb) x; \
 
-struct IHashCallbackUI: public IDirItemsCallback
+struct IHashCallbackUI
 {
   INTERFACE_IHashCallbackUI(=0)
 };
@@ -99,7 +99,7 @@ HRESULT HashCalc(
     DECL_EXTERNAL_CODECS_LOC_VARS
     const NWildcard::CCensor &censor,
     const CHashOptions &options,
-    AString &errorInfo,
+    UString &errorInfo,
     IHashCallbackUI *callback);
 
 void AddHashHexToString(char *dest, const Byte *data, UInt32 size);
